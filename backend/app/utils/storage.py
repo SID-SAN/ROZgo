@@ -40,3 +40,39 @@ async def upload_file_to_supabase(
     # Fallback/mock URL if Supabase client not connected
     return f"https://mock-storage.rozgo.in/{bucket}/{path}"
 
+import base64
+import re
+
+async def upload_base64_to_supabase(base64_data: str, bucket: str) -> str:
+    """
+    Detects if string is a base64 data URI (e.g. data:image/jpeg;base64,...),
+    decodes it, uploads it to the Supabase Storage bucket, and returns the storage URL.
+    If it's already an HTTP/HTTPS URL, returns it unchanged.
+    """
+    if not base64_data or not isinstance(base64_data, str):
+        return ""
+    if not base64_data.startswith("data:image"):
+        return base64_data
+
+    try:
+        match = re.match(r"data:image/(\w+);base64,(.+)", base64_data)
+        if match:
+            ext = match.group(1)
+            raw_base64 = match.group(2)
+        else:
+            ext = "jpeg"
+            raw_base64 = base64_data.split(",")[-1]
+
+        file_bytes = base64.b64decode(raw_base64)
+        content_type = f"image/{ext}"
+        return await upload_file_to_supabase(
+            bucket=bucket,
+            file_bytes=file_bytes,
+            original_filename=f"photo.{ext}",
+            content_type=content_type
+        )
+    except Exception as e:
+        print(f"Error converting base64 to Supabase storage: {e}")
+        return base64_data
+
+

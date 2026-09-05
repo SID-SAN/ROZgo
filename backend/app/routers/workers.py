@@ -96,6 +96,8 @@ FALLBACK_WORKERS = [
     }
 ]
 
+from app.utils.rotation import prioritize_worker_rotation, get_busy_worker_ids
+
 @router.get("", response_model=List[Dict[str, Any]])
 async def list_workers(
     category: Optional[str] = None,
@@ -104,6 +106,7 @@ async def list_workers(
     q: Optional[str] = None,
 ):
     supabase = get_supabase_client()
+    raw_workers = []
     if supabase:
         try:
             query = supabase.table("worker_profiles").select("*")
@@ -118,15 +121,19 @@ async def list_workers(
 
             res = query.execute()
             if res.data and len(res.data) > 0:
-                return [format_worker_profile(w) for w in res.data]
+                raw_workers = [format_worker_profile(w) for w in res.data]
         except Exception as e:
             print(f"Error querying worker_profiles from Supabase: {e}")
 
-    # Fallback to demo items
-    results = [format_worker_profile(w) for w in FALLBACK_WORKERS]
+    if not raw_workers:
+        raw_workers = [format_worker_profile(w) for w in FALLBACK_WORKERS]
+
     if q:
-        results = [w for w in results if q.lower() in w["name"].lower() or q.lower() in w["primarySkill"].lower()]
-    return results
+        raw_workers = [w for w in raw_workers if q.lower() in w["name"].lower() or q.lower() in w["primarySkill"].lower()]
+
+    # Apply Fair Work Rotation (Prioritize workers with NO work first)
+    busy_ids = get_busy_worker_ids()
+    return prioritize_worker_rotation(raw_workers, busy_ids)
 
 @router.get("/labour-no/{labour_no}")
 async def get_worker_by_labour_no(labour_no: str):

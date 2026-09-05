@@ -16,6 +16,8 @@ from app.utils.security import (
     get_password_hash,
     verify_password,
 )
+from app.utils.worker_id import generate_worker_id
+from app.utils.otp import generate_otp, send_real_sms_otp, verify_stored_otp
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -25,12 +27,13 @@ async def send_otp(req: SendOtpRequest):
     if not phone:
         raise HTTPException(status_code=400, detail="Phone number is required")
 
-    # In production, integrate SMS provider (MSG91/Twilio) here.
-    # We provide 123456 for instant testing.
+    otp = generate_otp(6)
+    dispatch_res = await send_real_sms_otp(phone, otp)
+
     return SendOtpResponse(
         success=True,
-        message=f"OTP sent successfully to {phone}",
-        demo_otp="123456"
+        message=dispatch_res.get("message", f"OTP sent to {phone}"),
+        demo_otp=dispatch_res.get("demo_otp")
     )
 
 @router.post("/otp/verify", response_model=AuthResponse)
@@ -38,9 +41,10 @@ async def verify_otp(req: VerifyOtpRequest):
     phone = req.phone.strip()
     otp = req.otp.strip()
 
-    # Verify OTP (accept standard demo OTP 123456 or match session)
-    if otp != "123456" and len(otp) < 4:
-        raise HTTPException(status_code=400, detail="Invalid OTP entered")
+    # Validate against active OTP store or Twilio Verify
+    is_valid = await verify_stored_otp(phone, otp)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP code")
 
     supabase = get_supabase_client()
     role = req.role or "worker"
@@ -140,7 +144,11 @@ async def register_user(req: RegisterRequest):
     user_id = str(uuid.uuid4())
     pw_hash = get_password_hash(req.password) if req.password else None
 
-    profile_id = f"w-{uuid.uuid4().hex[:8]}" if role == "worker" else f"emp-{uuid.uuid4().hex[:8]}"
+    if role == "worker":
+        profile_id = await generate_worker_id(location=req.location)
+    else:
+        profile_id = phone
+
     profile_data = {
         "id": profile_id,
         "name": name,
@@ -150,7 +158,7 @@ async def register_user(req: RegisterRequest):
 
     if role == "worker":
         profile_data.update({
-            "labour_no": f"UP-LBR-2026-{uuid.uuid4().hex[:6].upper()}",
+            "labour_no": profile_id,
             "primary_skill": req.primary_skill or "Mason & Construction",
             "experience_years": req.experience_years or 2,
             "daily_rate": 500.0,

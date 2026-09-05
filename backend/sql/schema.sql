@@ -180,3 +180,46 @@ ON CONFLICT (id) DO NOTHING;
 CREATE POLICY "Public media access" ON storage.objects
 FOR SELECT USING (bucket_id = 'public-media');
 
+-- 8. RECEIPTS TABLE (DIGITAL PROOF OF PAYMENT)
+CREATE TABLE IF NOT EXISTS receipts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    receipt_number VARCHAR(50) UNIQUE NOT NULL,
+    booking_id UUID REFERENCES bookings(id) ON DELETE SET NULL,
+    employer_id VARCHAR(50) REFERENCES employer_profiles(id) ON DELETE SET NULL,
+    worker_id VARCHAR(50) REFERENCES worker_profiles(id) ON DELETE SET NULL,
+    amount NUMERIC(10, 2) NOT NULL,
+    currency VARCHAR(10) DEFAULT 'INR',
+    payment_status VARCHAR(20) DEFAULT 'PAID',
+    payment_method VARCHAR(30) DEFAULT 'Cash / UPI',
+    job_title VARCHAR(150),
+    breakdown JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 9. GRIEVANCES TABLE (DISPUTES, REDRESSAL & TRACKING)
+CREATE TABLE IF NOT EXISTS grievances (
+    id VARCHAR(50) PRIMARY KEY,
+    user_id VARCHAR(50),
+    user_name VARCHAR(100),
+    user_phone VARCHAR(20),
+    user_role VARCHAR(20),
+    category VARCHAR(50),
+    category_label VARCHAR(100),
+    title VARCHAR(200) NOT NULL,
+    description TEXT NOT NULL,
+    booking_id VARCHAR(50),
+    booking_number VARCHAR(50),
+    status VARCHAR(30) DEFAULT 'submitted' CHECK (status IN ('submitted', 'under_review', 'info_requested', 'in_investigation', 'resolved', 'closed', 'escalated')),
+    priority VARCHAR(20) DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
+    evidence JSONB DEFAULT '[]'::jsonb,
+    messages JSONB DEFAULT '[]'::jsonb,
+    resolution TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_grievances_user_phone ON grievances(user_phone);
+CREATE INDEX IF NOT EXISTS idx_grievances_status ON grievances(status);
+
+
+
