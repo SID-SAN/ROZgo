@@ -1,0 +1,90 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --primary-color: #123B32;
+    --primary-hover: #1c463e;
+  }
+
+  html {
+    font-family: Arial, Helvetica, sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #root {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    width: 100%;
+  }
+
+  /* Accessible outline focus */
+  :focus-visible {
+    outline: 2px solid #123B32;
+    outline-offset: 2px;
+  }
+}
+
+/* Custom smooth transitions and animations */
+@keyframes pulseSubtle {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.02); }
+}
+
+.animate-pulse-subtle {
+  animation: pulseSubtle 3s ease-in-out infinite;
+}
+
+/* Custom scrollbar for mobile drawers / dialogs */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(18, 59, 50, 0.2);
+  border-radius: 9999px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(93, 167, 149, 0.25);
+}
+
+/* Print Optimization for ROZGO Agreements */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #111111 !important;
+  }
+
+  header,
+  footer,
+  nav,
+  .no-print {
+    display: none !important;
+  }
+
+  .print-agreement-container {
+    position: static !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 20px !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    box-shadow: none !important;
+    border: 1px solid #123B32 !important;
+  }
+}
