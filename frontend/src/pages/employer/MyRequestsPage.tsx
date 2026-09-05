@@ -1,38 +1,52 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Plus, FileText, CheckCircle2, Phone, Calendar, Clock, Star, Users, Printer, ShieldAlert } from 'lucide-react';
+import { Plus, FileText, CheckCircle2, Phone, Calendar, Clock, Star, Users, Printer, ShieldAlert, ArrowRight, Layers } from 'lucide-react';
 import { useBooking } from '../../context/BookingContext';
 import { useGrievance } from '../../context/GrievanceContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { ActiveBookingCard } from '../../components/bookings/ActiveBookingCard';
 import { BookingAgreementModal } from '../../components/bookings/BookingAgreementModal';
 import { RatingReviewModal } from '../../components/bookings/RatingReviewModal';
-import { CallModal } from '../../components/common/CallModal';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { BookingAgreement } from '../../types';
 
 export const MyRequestsPage: React.FC = () => {
-  const { activeAgreement, completedAgreements, markWorkCompleted, submitReview, employerRejectBooking } = useBooking();
+  const {
+    activeAgreements,
+    completedAgreements,
+    markWorkCompleted,
+    submitReview,
+    employerRejectBooking,
+  } = useBooking();
   const { activeGrievancesCount } = useGrievance();
   const { t } = useLanguage();
   const navigate = useNavigate();
 
-  const [isAgreementOpen, setIsAgreementOpen] = useState(false);
-  const [isCallOpen, setIsCallOpen] = useState(false);
-  const [isRatingOpen, setIsRatingOpen] = useState(false);
+  const [viewingAgreement, setViewingAgreement] = useState<BookingAgreement | null>(null);
+  const [ratingBooking, setRatingBooking] = useState<BookingAgreement | null>(null);
   const [viewingCompletedAgreement, setViewingCompletedAgreement] = useState<BookingAgreement | null>(null);
 
-  const handleCompleteWork = () => {
-    if (activeAgreement) {
-      markWorkCompleted(activeAgreement.id);
-      setIsRatingOpen(true);
+  // Active bookings (in progress or awaiting confirmation)
+  const activeJobs = activeAgreements.filter(
+    (b) => b.status !== 'completed' && b.status !== 'rejected'
+  );
+
+  const handleCompleteWork = (booking: BookingAgreement) => {
+    markWorkCompleted(booking.id);
+    setRatingBooking(booking);
+  };
+
+  const handleCallWorker = (booking: BookingAgreement) => {
+    const phone = (booking.workers[0]?.phone || '').replace(/[^0-9+]/g, '');
+    if (phone) {
+      window.location.href = `tel:${phone}`;
     }
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8 sm:space-y-10 text-left">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-8 sm:space-y-10 text-left animate-fadeIn">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-neutral-200 dark:border-darkbg-border">
         <div>
@@ -40,42 +54,66 @@ export const MyRequestsPage: React.FC = () => {
             My Work Bookings & Requests
           </h1>
           <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-            Track active jobs, call workers, view agreements, and rate completed tasks.
+            Track active jobs across trades, call workers directly, view agreements, and rate completed tasks.
           </p>
         </div>
 
-        <Button
-          variant="primary"
-          size="md"
-          leftIcon={<Plus className="w-4 h-4" />}
-          onClick={() => navigate('/employer')}
-        >
-          {t('landing.findWorkerCta')}
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            variant="primary"
+            size="md"
+            leftIcon={<Plus className="w-4 h-4" />}
+            onClick={() => navigate('/employer')}
+            className="font-bold whitespace-nowrap shadow-sm"
+          >
+            + Book Another Trade / Worker
+          </Button>
+        </div>
       </div>
 
-      {/* 1. ACTIVE BOOKING SECTION */}
+      {/* 1. ACTIVE BOOKING SECTION (SUPPORTS MULTIPLE SIMULTANEOUS JOBS) */}
       <section className="space-y-4">
-        <h2 className="text-xl font-bold text-neutral-900 dark:text-white">
-          Active Job in Progress
-        </h2>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-bold text-neutral-900 dark:text-white">
+              Active Jobs & Requests in Progress
+            </h2>
+            {activeJobs.length > 0 && (
+              <Badge variant={activeJobs.length > 1 ? 'primary' : 'success'} size="sm">
+                {activeJobs.length} Active {activeJobs.length === 1 ? 'Job' : 'Jobs'}
+              </Badge>
+            )}
+          </div>
 
-        {activeAgreement && activeAgreement.status !== 'completed' && activeAgreement.status !== 'rejected' ? (
-          <ActiveBookingCard
-            booking={activeAgreement}
-            role="employer"
-            onCall={() => setIsCallOpen(true)}
-            onViewAgreement={() => setIsAgreementOpen(true)}
-            onCompleteWork={handleCompleteWork}
-            onRejectBooking={() => employerRejectBooking('Cancelled by employer')}
-          />
+          {activeJobs.length > 1 && (
+            <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-rozgo-800 dark:text-rozgo-300">
+              <Layers className="w-3.5 h-3.5" />
+              <span>Simultaneous Multi-Trade Booking Active</span>
+            </div>
+          )}
+        </div>
+
+        {activeJobs.length > 0 ? (
+          <div className="space-y-6">
+            {activeJobs.map((booking) => (
+              <ActiveBookingCard
+                key={booking.id}
+                booking={booking}
+                role="employer"
+                onCall={() => handleCallWorker(booking)}
+                onViewAgreement={() => setViewingAgreement(booking)}
+                onCompleteWork={() => handleCompleteWork(booking)}
+                onRejectBooking={() => employerRejectBooking('Cancelled by employer', booking.id)}
+              />
+            ))}
+          </div>
         ) : (
           <Card variant="default" padding="xl" className="text-center py-12">
             <p className="text-base font-semibold text-neutral-700 dark:text-neutral-300">
               You don't have an active booking right now.
             </p>
             <p className="text-xs text-neutral-500 mt-1">
-              Select any household trade service to find verified workers nearby.
+              Select any household trade service or multiple fields to find verified workers nearby.
             </p>
             <Button
               variant="primary"
@@ -83,76 +121,108 @@ export const MyRequestsPage: React.FC = () => {
               className="mt-5"
               onClick={() => navigate('/employer')}
             >
-              Find a Worker
+              Find Workers
             </Button>
           </Card>
         )}
       </section>
 
-      {/* 2. COMPLETED BOOKINGS HISTORY */}
+      {/* 2. COMPLETED BOOKINGS HISTORY (RECENT 5) */}
       <section className="space-y-4 pt-4">
-        <h2 className="text-xl font-bold text-neutral-900 dark:text-white">
-          Completed Services History ({completedAgreements.length})
-        </h2>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-bold text-neutral-900 dark:text-white">
+              Completed Services History
+            </h2>
+            {completedAgreements.length > 0 && (
+              <Badge variant="neutral" size="sm">
+                Recent {Math.min(5, completedAgreements.length)} of {completedAgreements.length}
+              </Badge>
+            )}
+          </div>
+          {completedAgreements.length > 0 && (
+            <Link
+              to="/employer/completed-services"
+              className="inline-flex items-center gap-1.5 text-sm font-bold text-rozgo-700 dark:text-rozgo-300 hover:text-rozgo-900 dark:hover:text-white hover:underline transition-colors"
+            >
+              <span>View All History ({completedAgreements.length})</span>
+              <ArrowRight className="w-4 h-4" />
+            </Link>
+          )}
+        </div>
 
         <div className="space-y-3">
           {completedAgreements.length > 0 ? (
-            completedAgreements.map((booking) => (
-              <Card
-                key={booking.id}
-                variant="default"
-                padding="lg"
-                className="flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-              >
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="text-lg font-bold text-neutral-900 dark:text-white">
-                      {booking.workTitle}
-                    </h3>
-                    <Badge variant="success" size="sm">
-                      Completed
-                    </Badge>
-                    <span className="text-xs text-neutral-400">#{booking.bookingNumber}</span>
-                  </div>
+            <>
+              {completedAgreements.slice(0, 5).map((booking) => (
+                <Card
+                  key={booking.id}
+                  variant="default"
+                  padding="lg"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-rozgo-200 dark:hover:border-rozgo-800 transition-all"
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-lg font-bold text-neutral-900 dark:text-white">
+                        {booking.workTitle}
+                      </h3>
+                      <Badge variant="success" size="sm">
+                        Completed
+                      </Badge>
+                      <span className="text-xs text-neutral-400">#{booking.bookingNumber}</span>
+                    </div>
 
-                  <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                    {booking.description}
-                  </p>
+                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                      {booking.description}
+                    </p>
 
-                  <div className="flex flex-wrap items-center gap-3 text-xs text-neutral-500 pt-1">
-                    <span>Date: {booking.date}</span>
-                    <span>•</span>
-                    <span>Worker: {booking.workers[0]?.name}</span>
-                    <span>•</span>
-                    <span>{booking.workersCount} worker(s)</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center sm:flex-col items-end justify-between sm:justify-center gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-neutral-100 dark:border-darkbg-border">
-                  <div className="text-left sm:text-right">
-                    <div className="text-xs text-neutral-400">Paid Direct Wage</div>
-                    <div className="text-xl font-black text-rozgo-900 dark:text-emerald-400">
-                      ₹{booking.agreedWage.toLocaleString()}
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-neutral-500 pt-1">
+                      <span>Date: {booking.date}</span>
+                      <span>•</span>
+                      <span>Worker: {booking.workers[0]?.name}</span>
+                      <span>•</span>
+                      <span>{booking.workersCount} worker(s)</span>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 hidden sm:inline">
-                      ✓ Rated ★★★★★
-                    </span>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      leftIcon={<Printer className="w-4 h-4 text-rozgo-700 dark:text-rozgo-300" />}
-                      onClick={() => setViewingCompletedAgreement(booking)}
-                      title="Print Agreement"
-                    >
-                      Print Agreement
-                    </Button>
+                  <div className="flex items-center sm:flex-col items-end justify-between sm:justify-center gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-neutral-100 dark:border-darkbg-border">
+                    <div className="text-left sm:text-right">
+                      <div className="text-xs text-neutral-400">Paid Direct Wage</div>
+                      <div className="text-xl font-black text-rozgo-900 dark:text-emerald-400">
+                        ₹{booking.agreedWage.toLocaleString()}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 hidden sm:inline">
+                        ✓ Rated ★★★★★
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        leftIcon={<Printer className="w-4 h-4 text-rozgo-700 dark:text-rozgo-300" />}
+                        onClick={() => setViewingCompletedAgreement(booking)}
+                        title="Print Agreement"
+                      >
+                        Print Agreement
+                      </Button>
+                    </div>
                   </div>
+                </Card>
+              ))}
+
+              {completedAgreements.length > 5 && (
+                <div className="pt-2 text-center">
+                  <Link
+                    to="/employer/completed-services"
+                    className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl bg-neutral-100 hover:bg-neutral-200 dark:bg-darkbg-card dark:hover:bg-darkbg-border text-neutral-900 dark:text-white font-bold text-sm transition-all border border-neutral-200 dark:border-darkbg-border shadow-xs"
+                  >
+                    <span>View All {completedAgreements.length} Completed Services</span>
+                    <ArrowRight className="w-4 h-4 text-rozgo-600" />
+                  </Link>
                 </div>
-              </Card>
-            ))
+              )}
+            </>
           ) : (
             <p className="text-sm text-neutral-500">No completed jobs recorded yet.</p>
           )}
@@ -200,27 +270,17 @@ export const MyRequestsPage: React.FC = () => {
         </div>
       </section>
 
-      {/* Call Dialog */}
-      {activeAgreement && (
-        <CallModal
-          isOpen={isCallOpen}
-          onClose={() => setIsCallOpen(false)}
-          onCallAgreed={() => setIsAgreementOpen(true)}
-          calleeName={activeAgreement.workers[0]?.name || 'Worker'}
-          calleePhone={activeAgreement.workers[0]?.phone || ''}
-          roleType="employer"
-          serviceTitle={activeAgreement.workTitle}
-        />
-      )}
-
       {/* Agreement View Modal */}
-      {activeAgreement && (
+      {viewingAgreement && (
         <BookingAgreementModal
-          isOpen={isAgreementOpen}
-          onClose={() => setIsAgreementOpen(false)}
-          agreement={activeAgreement}
+          isOpen={Boolean(viewingAgreement)}
+          onClose={() => setViewingAgreement(null)}
+          agreement={viewingAgreement}
           isEmployerPerspective={true}
-          onEmployerReject={() => employerRejectBooking('Cancelled by employer')}
+          onEmployerReject={() => {
+            employerRejectBooking('Cancelled by employer', viewingAgreement.id);
+            setViewingAgreement(null);
+          }}
         />
       )}
 
@@ -234,18 +294,18 @@ export const MyRequestsPage: React.FC = () => {
       )}
 
       {/* Review Modal */}
-      {activeAgreement && (
+      {ratingBooking && (
         <RatingReviewModal
-          isOpen={isRatingOpen}
-          onClose={() => setIsRatingOpen(false)}
-          onSubmit={(rating, comment, tags) =>
-            submitReview(activeAgreement.id, rating, comment, tags)
-          }
-          targetName={activeAgreement.workers[0]?.name || 'Worker'}
+          isOpen={Boolean(ratingBooking)}
+          onClose={() => setRatingBooking(null)}
+          onSubmit={(rating, comment, tags) => {
+            submitReview(ratingBooking.id, rating, comment, tags);
+            setRatingBooking(null);
+          }}
+          targetName={ratingBooking.workers[0]?.name || 'Worker'}
           role="employer"
         />
       )}
     </div>
   );
 };
-

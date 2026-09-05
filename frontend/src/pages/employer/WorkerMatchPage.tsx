@@ -15,6 +15,14 @@ import {
   Calendar,
   XCircle,
   RefreshCw,
+  Layers,
+  Wrench,
+  Building,
+  Sparkles,
+  UserCheck,
+  Eye,
+  Award,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
@@ -23,20 +31,26 @@ import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { LabourBadge } from '../../components/workers/LabourBadge';
-import { CallModal } from '../../components/common/CallModal';
 import { BookingAgreementModal } from '../../components/bookings/BookingAgreementModal';
+import { WorkerProfileModal } from '../../components/workers/WorkerProfileModal';
 import { Modal } from '../../components/common/Modal';
+import { SERVICES_DATA } from '../../data/servicesData';
+import { BookingAgreement, WorkerProfile } from '../../types';
 
 export const WorkerMatchPage: React.FC = () => {
   const { t } = useLanguage();
   const {
+    activeAgreements,
     activeAgreement,
     matchedWorker,
+    matchedWorkersByTrade,
+    requestedCategories,
     additionalWorkers,
     addWorkerByLabourNumber,
     addRecommendedWorker,
     removeWorkerFromBooking,
     confirmAgreementDetails,
+    confirmAllPendingAgreements,
     employerRejectBooking,
     switchMatchedWorker,
     rejectWorkerAndShowNext,
@@ -45,12 +59,42 @@ export const WorkerMatchPage: React.FC = () => {
   } = useBooking();
   const navigate = useNavigate();
 
-  // Call modal
-  const [isCallOpen, setIsCallOpen] = useState(false);
+  // Active matching agreements
+  const matchingAgreements = activeAgreements.filter(
+    (a) => a.status === 'matching' || a.status === 'awaiting_confirmation'
+  );
+
+  const activeCategories =
+    requestedCategories.length > 0
+      ? requestedCategories
+      : matchingAgreements.length > 0
+      ? matchingAgreements.map((a) => a.serviceCategory)
+      : ['plumber'];
+
+  // Worker profile modal state
+  const [selectedProfileWorker, setSelectedProfileWorker] = useState<WorkerProfile | null>(null);
 
   // Reject booking modal
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
+  const [rejectingCategory, setRejectingCategory] = useState<string>('');
   const [rejectionReason, setRejectionReason] = useState('Unable to reach agreement on wage or timing');
+
+  // Confirmation form modal
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [wagesByTrade, setWagesByTrade] = useState<Record<string, number>>(() => {
+    const initial: Record<string, number> = {};
+    activeCategories.forEach((cat) => {
+      initial[cat] = cat === 'mason' ? 1800 : cat === 'plumber' ? 1500 : 1200;
+    });
+    return initial;
+  });
+
+  const [date, setDate] = useState<string>('Today');
+  const [time, setTime] = useState<string>('11:00 AM');
+
+  // Generated agreement view
+  const [isAgreementOpen, setIsAgreementOpen] = useState(false);
+  const [viewingAgreement, setViewingAgreement] = useState<BookingAgreement | null>(null);
 
   // Labour number hire input
   const [labourNoInput, setLabourNoInput] = useState('');
@@ -59,25 +103,10 @@ export const WorkerMatchPage: React.FC = () => {
     message: string;
   }>({ type: null, message: '' });
 
-  // Confirmation form modal
-  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
-  const [agreedWage, setAgreedWage] = useState<number>(1500);
-  const [date, setDate] = useState<string>('12 September');
-  const [time, setTime] = useState<string>('10:00 AM');
-
-  // Generated agreement view
-  const [isAgreementOpen, setIsAgreementOpen] = useState(false);
-
-  if (!matchedWorker) {
-    return (
-      <div className="max-w-2xl mx-auto px-4 py-16 text-center space-y-4">
-        <h2 className="text-2xl font-bold">No active match found</h2>
-        <Button variant="primary" onClick={() => navigate('/employer')}>
-          Choose a Service
-        </Button>
-      </div>
-    );
-  }
+  const handleCallWorker = (phoneStr: string) => {
+    const phone = phoneStr.replace(/[^0-9+]/g, '') || phoneStr;
+    window.location.href = `tel:${phone}`;
+  };
 
   const handleAddByLabourNo = (e: React.FormEvent) => {
     e.preventDefault();
@@ -101,19 +130,63 @@ export const WorkerMatchPage: React.FC = () => {
     }
   };
 
-  const handleFinalizeBooking = (e: React.FormEvent) => {
-    e.preventDefault();
-    confirmAgreementDetails({
-      agreedWage,
-      date,
-      time,
-    });
-    setIsConfirmModalOpen(false);
-    setIsAgreementOpen(true);
+  const handleOpenConfirmModal = () => {
+    setIsConfirmModalOpen(true);
   };
 
+  const handleFinalizeAllBookings = (e: React.FormEvent) => {
+    e.preventDefault();
+    const updated = confirmAllPendingAgreements(wagesByTrade, date, time);
+    setIsConfirmModalOpen(false);
+    if (updated.length > 0) {
+      setViewingAgreement(updated[0]);
+      setIsAgreementOpen(true);
+    } else {
+      navigate('/employer/requests');
+    }
+  };
+
+  if (activeCategories.length === 0 && !matchedWorker) {
+    return (
+      <div className="max-w-2xl mx-auto px-4 py-16 text-center space-y-4">
+        <h2 className="text-2xl font-bold">No active work request found</h2>
+        <Button variant="primary" onClick={() => navigate('/employer')}>
+          Choose Services
+        </Button>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 space-y-8 text-left">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-14 space-y-8 text-left animate-fadeIn">
+      {/* Header Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-neutral-200 dark:border-darkbg-border">
+        <div>
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rozgo-100 dark:bg-darkbg-card text-rozgo-900 dark:text-rozgo-300 text-xs font-bold mb-2">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Instant Direct Contact • Zero Middleman Fees</span>
+          </div>
+          <h1 className="text-3xl sm:text-4xl font-black text-neutral-900 dark:text-white tracking-tight">
+            {activeCategories.length > 1
+              ? `Verified Workers Matched (${activeCategories.length} Simultaneous Trades)`
+              : 'Verified Worker Matched'}
+          </h1>
+          <p className="text-sm text-neutral-600 dark:text-neutral-400 mt-1">
+            Review worker profiles, check ratings and portfolio pictures, call directly to negotiate fair wages, and finalize agreements.
+          </p>
+        </div>
+
+        <Button
+          variant="primary"
+          size="lg"
+          rightIcon={<ArrowRight className="w-5 h-5" />}
+          onClick={handleOpenConfirmModal}
+          className="shrink-0 shadow-md font-black"
+        >
+          {activeCategories.length > 1 ? 'Finalize & Send All Agreements' : 'Finalize Agreement'}
+        </Button>
+      </div>
+
       {/* Dynamic Next Worker Match Banner (After Rejection) */}
       {previousWorkerFeedback && (
         <div className="p-4 sm:p-5 rounded-3xl bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-800 text-amber-950 dark:text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm animate-fade-in">
@@ -131,217 +204,225 @@ export const WorkerMatchPage: React.FC = () => {
                 </Badge>
               </div>
               <p className="text-neutral-600 dark:text-neutral-300 mt-0.5">
-                Reason: {previousWorkerFeedback.reason}. Showing next available verified <strong>{matchedWorker.primarySkill.toUpperCase()}</strong> ({matchedWorker.name}, {matchedWorker.distanceKm} km away).
+                Reason: {previousWorkerFeedback.reason}. Assigned next available verified worker nearby.
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                const res = rejectWorkerAndShowNext('Requested next worker option');
-                if (res.noMoreWorkers) {
-                  // Looped through pool
-                }
-              }}
-              leftIcon={<RefreshCw className="w-3.5 h-3.5" />}
-              className="text-xs"
-            >
-              Skip to Next
-            </Button>
-            <button
-              onClick={clearPreviousWorkerFeedback}
-              className="p-1.5 text-neutral-400 hover:text-neutral-700 dark:hover:text-white rounded-lg transition-colors"
-              title="Dismiss note"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+          <button
+            onClick={clearPreviousWorkerFeedback}
+            className="p-1.5 text-neutral-400 hover:text-neutral-700 dark:hover:text-white rounded-lg transition-colors self-end sm:self-center cursor-pointer"
+            title="Dismiss note"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
-      {/* Top Banner: MATCH FOUND */}
-      <div className="flex items-center justify-between p-6 sm:p-8 rounded-3xl bg-rozgo-900 text-white shadow-soft-lg">
-        <div className="space-y-1">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rozgo-800 text-rozgo-200 text-xs font-bold uppercase tracking-wider">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-            <span>{t('employerFlow.matchFoundTitle')}</span>
-          </div>
-          <h1 className="text-2xl sm:text-4xl font-black tracking-tight">
-            {activeAgreement?.workTitle || 'Verified Worker Match'}
-          </h1>
-          <p className="text-xs sm:text-sm text-rozgo-100/80">
-            {t('employerFlow.matchFoundSub')}
-          </p>
-        </div>
+      {/* Matched Workers List by Trade */}
+      <div className="space-y-6">
+        {activeCategories.map((category, idx) => {
+          const worker = matchedWorkersByTrade[category] || matchedWorker || null;
+          if (!worker) return null;
 
-        <div className="hidden sm:block text-right">
-          <Badge variant="verified" size="lg">
-            ✓ Identity Verified
-          </Badge>
-        </div>
-      </div>
+          const serviceMeta = SERVICES_DATA.find((s) => s.id === category);
+          const tradeTitle = serviceMeta?.defaultName || category.toUpperCase();
+          const targetAgr = matchingAgreements.find((a) => a.serviceCategory === category);
+          const currentWage = wagesByTrade[category] || 1500;
+          const portfolioCount = worker.portfolio?.length || 0;
+          const certCount = worker.certifications?.length || 0;
 
-      {/* Direct Phone Negotiation Notice */}
-      <div className="p-5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-amber-950 dark:text-amber-200 flex items-start gap-3.5">
-        <AlertCircle className="w-6 h-6 text-amber-700 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-        <div className="space-y-1 text-xs sm:text-sm">
-          <h4 className="font-bold text-neutral-900 dark:text-white text-base">
-            {t('employerFlow.negotiationNoticeTitle')}
-          </h4>
-          <p className="leading-relaxed">
-            {t('employerFlow.negotiationNoticeBody')}
-          </p>
-        </div>
-      </div>
-
-      {/* Primary Matched Worker Card */}
-      <Card variant="elevated" padding="xl" className="border-2 border-rozgo-200 dark:border-darkbg-border">
-        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 text-center sm:text-left">
-          <div className="relative">
-            <img
-              src={matchedWorker.avatar}
-              alt={matchedWorker.name}
-              className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl object-cover border-4 border-rozgo-100 dark:border-darkbg-border shadow-soft"
-            />
-            <span className="absolute -bottom-1.5 -right-1.5 bg-rozgo-900 text-white p-1.5 rounded-full shadow-md">
-              <ShieldCheck className="w-4 h-4 text-rozgo-200" />
-            </span>
-          </div>
-
-          <div className="flex-1 space-y-2">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div>
-                <h3 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white">
-                  {matchedWorker.name}
-                </h3>
-                <p className="text-sm font-semibold text-rozgo-700 dark:text-rozgo-400">
-                  Lead {matchedWorker.primarySkill.toUpperCase()}
-                </p>
-              </div>
-
-              <div className="flex items-center justify-center gap-1 text-amber-500 font-bold text-lg">
-                <Star className="w-5 h-5 fill-amber-400 text-amber-400" />
-                <span>{matchedWorker.rating.toFixed(1)}</span>
-                <span className="text-xs text-neutral-400 font-normal">
-                  ({matchedWorker.completedJobsCount} jobs)
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-center sm:justify-start gap-2 pt-1">
-              <span className="text-xs font-bold uppercase tracking-wider text-neutral-500">
-                Labour ID:
-              </span>
-              <LabourBadge labourNumber={matchedWorker.labourNumber} size="sm" />
-            </div>
-
-            <div className="flex items-center justify-center sm:justify-start gap-4 text-xs sm:text-sm text-neutral-600 dark:text-neutral-400 pt-1">
-              <span className="flex items-center gap-1">
-                <MapPin className="w-4 h-4 text-rozgo-700" />
-                {matchedWorker.location} ({matchedWorker.distanceKm} km away)
-              </span>
-              <span>•</span>
-              <span>{matchedWorker.experienceYears}+ Years Experience</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Action CTAs */}
-        <div className="mt-8 pt-6 border-t border-neutral-100 dark:border-darkbg-border flex flex-col sm:flex-row gap-3">
-          <Button
-            variant="primary"
-            size="xl"
-            className="sm:flex-[2]"
-            leftIcon={<Phone className="w-6 h-6 text-rozgo-200" />}
-            onClick={() => setIsCallOpen(true)}
-          >
-            {t('employerFlow.callWorker')}
-          </Button>
-
-          <Button
-            variant="outline"
-            size="xl"
-            className="sm:flex-1 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 font-bold"
-            leftIcon={<CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />}
-            onClick={() => setIsConfirmModalOpen(true)}
-          >
-            Confirm Booking
-          </Button>
-
-          <Button
-            variant="outline"
-            size="xl"
-            className="sm:flex-1 border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-300 font-bold"
-            leftIcon={<XCircle className="w-5 h-5 text-rose-600 dark:text-rose-400" />}
-            onClick={() => setIsRejectModalOpen(true)}
-          >
-            Reject Booking
-          </Button>
-        </div>
-      </Card>
-
-      {/* MULTIPLE WORKERS SECTION (MAJDOOR MITR) */}
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-xl font-bold text-neutral-900 dark:text-white">
-              Add More Workers (Majdoor Mitr)
-            </h3>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">
-              Need extra hands for this task? Add trusted peers recommended by ROZGO or hire by Labour ID.
-            </p>
-          </div>
-        </div>
-
-        {/* Added Additional Workers List */}
-        {additionalWorkers.length > 0 && (
-          <div className="space-y-2">
-            {additionalWorkers.map((workerItem) => (
-              <div
-                key={workerItem.workerId}
-                className="flex items-center justify-between p-3.5 rounded-2xl bg-white dark:bg-darkbg-card border border-neutral-200 dark:border-darkbg-border text-sm"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-rozgo-100 dark:bg-rozgo-900/60 text-rozgo-900 dark:text-rozgo-200 flex items-center justify-center font-bold">
-                    {workerItem.name.charAt(0)}
-                  </div>
-                  <div>
-                    <div className="font-bold text-neutral-900 dark:text-white">
-                      {workerItem.name}
-                    </div>
-                    <div className="text-xs text-neutral-400">{workerItem.phone}</div>
-                  </div>
-                  <LabourBadge labourNumber={workerItem.labourNumber} size="sm" showCopy={false} />
+          return (
+            <Card
+              key={category}
+              variant="elevated"
+              padding="lg"
+              className="border-2 border-rozgo-900/40 dark:border-rozgo-700 space-y-5 relative overflow-hidden"
+            >
+              {/* Top Trade Badge Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-100 dark:border-darkbg-border">
+                <div className="flex items-center gap-2.5">
+                  <span className="px-3 py-1 rounded-xl bg-rozgo-900 text-white font-bold text-xs uppercase tracking-wider">
+                    Trade {idx + 1}: {tradeTitle}
+                  </span>
+                  {targetAgr && (
+                    <span className="text-xs text-neutral-500 font-semibold">
+                      Task: {targetAgr.subcategory}
+                    </span>
+                  )}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => removeWorkerFromBooking(workerItem.workerId)}
-                  className="p-1.5 rounded-lg text-neutral-400 hover:text-red-600 hover:bg-neutral-100 dark:hover:bg-darkbg-surface transition-colors"
-                  title="Remove from booking"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Verified Citizen Worker</span>
+                  </span>
+                </div>
               </div>
-            ))}
+
+              {/* Worker Profile Main Info */}
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div className="flex items-center gap-4">
+                  <div
+                    onClick={() => setSelectedProfileWorker(worker)}
+                    className="cursor-pointer group relative shrink-0"
+                    title="Click to view full profile & portfolio"
+                  >
+                    <img
+                      src={worker.avatar}
+                      alt={worker.name}
+                      className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl object-cover border-2 border-white shadow-soft group-hover:scale-105 transition-transform"
+                    />
+                    <div className="absolute inset-0 rounded-3xl bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-[11px] font-bold">
+                      <Eye className="w-5 h-5" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProfileWorker(worker)}
+                        className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white hover:text-rozgo-800 dark:hover:text-rozgo-300 transition-colors text-left cursor-pointer"
+                        title="View profile"
+                      >
+                        {worker.name}
+                      </button>
+                      <LabourBadge labourNumber={worker.labourNumber} />
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-neutral-600 dark:text-neutral-400">
+                      <div className="flex items-center gap-1 text-amber-500 font-bold">
+                        <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
+                        <span>{worker.rating.toFixed(1)}</span>
+                        <span className="text-neutral-400">({worker.completedJobsCount} jobs)</span>
+                      </div>
+                      <span>•</span>
+                      <div className="flex items-center gap-1">
+                        <MapPin className="w-3.5 h-3.5 text-neutral-400" />
+                        <span>{worker.distanceKm} km away ({worker.location})</span>
+                      </div>
+                      <span>•</span>
+                      <span>{worker.experienceYears} yrs exp</span>
+                    </div>
+
+                    {/* Quick highlights: Skills & Portfolio badges */}
+                    <div className="pt-1 flex flex-wrap items-center gap-1.5">
+                      {worker.skills.slice(0, 3).map((skill, sIdx) => (
+                        <span
+                          key={sIdx}
+                          className="px-2 py-0.5 rounded-lg bg-neutral-100 dark:bg-darkbg-surface text-neutral-700 dark:text-neutral-300 text-[11px] font-medium"
+                        >
+                          {skill}
+                        </span>
+                      ))}
+
+                      {portfolioCount > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 text-[11px] font-semibold border border-blue-200 dark:border-blue-800/40">
+                          <ImageIcon className="w-3 h-3" />
+                          <span>{portfolioCount} Photos</span>
+                        </span>
+                      )}
+
+                      {certCount > 0 && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 text-[11px] font-semibold border border-emerald-200 dark:border-emerald-800/40">
+                          <Award className="w-3 h-3" />
+                          <span>Certified</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Direct Calling, Profile View & Negotiation CTAs */}
+                <div className="flex flex-col sm:flex-row md:flex-col gap-2.5 w-full md:w-auto shrink-0">
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    leftIcon={<Phone className="w-4 h-4" />}
+                    onClick={() => handleCallWorker(worker.phone)}
+                    className="!bg-emerald-600 hover:!bg-emerald-700 text-white font-bold whitespace-nowrap shadow-sm"
+                  >
+                    Call {worker.name}
+                  </Button>
+
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      leftIcon={<UserCheck className="w-4 h-4 text-rozgo-800 dark:text-rozgo-300" />}
+                      onClick={() => setSelectedProfileWorker(worker)}
+                      className="text-xs font-bold flex-1"
+                    >
+                      View Profile & Photos
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setRejectingCategory(category);
+                        setIsRejectModalOpen(true);
+                      }}
+                      className="text-xs text-neutral-600 dark:text-neutral-300 hover:text-rose-600"
+                    >
+                      Skip
+                    </Button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Direct call note & profile review link */}
+              <div className="p-3.5 rounded-2xl bg-neutral-50 dark:bg-darkbg-surface border border-neutral-100 dark:border-darkbg-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div className="text-neutral-600 dark:text-neutral-400">
+                  Phone: <strong className="text-neutral-800 dark:text-neutral-200">{worker.phone}</strong> • Agree on wage directly over phone
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProfileWorker(worker)}
+                    className="text-rozgo-700 dark:text-rozgo-300 hover:underline font-bold inline-flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Check certifications & ratings ({worker.reviews?.length || 0} reviews)</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+
+      {/* Helper Labour (Majdoor Mitr) Crew Section */}
+      <section className="space-y-4 pt-2">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-neutral-900 dark:text-white">
+              Add Additional Helpers (Majdoor Mitr)
+            </h3>
+            <p className="text-xs text-neutral-500">
+              Need extra helper hands on site? Add recommended workers or hire by Labour ID.
+            </p>
           </div>
-        )}
+          {additionalWorkers.length > 0 && (
+            <Badge variant="primary" size="sm">
+              {additionalWorkers.length} Helper(s) Added
+            </Badge>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Option 1: Find More Workers via ROZGO */}
           <Card variant="default" padding="md" className="space-y-3">
             <h4 className="font-bold text-sm text-neutral-900 dark:text-white">
-              {t('employerFlow.optionFindMore')}
+              Add Nearby Verified Helper
             </h4>
             <p className="text-xs text-neutral-500 leading-relaxed">
-              Let ROZGO find another nearby verified worker with suitable trade credentials.
+              Instantly pair an additional verified labourer with this crew.
             </p>
             <Button
-              variant="secondary"
-              size="md"
+              variant="outline"
+              size="sm"
               leftIcon={<Plus className="w-4 h-4" />}
               onClick={handleAddRecommended}
             >
@@ -349,13 +430,12 @@ export const WorkerMatchPage: React.FC = () => {
             </Button>
           </Card>
 
-          {/* Option 2: Hire by Labour Number (Majdoor Mitr Referral) */}
           <Card variant="default" padding="md" className="space-y-3">
             <h4 className="font-bold text-sm text-neutral-900 dark:text-white">
-              {t('employerFlow.optionLabourNo')}
+              Add Worker by Labour ID (RZG-XXXXXX)
             </h4>
             <p className="text-xs text-neutral-500 leading-relaxed">
-              Did the primary worker recommend a peer over the phone? Enter their ID:
+              Enter the labour number if recommended directly:
             </p>
             <form onSubmit={handleAddByLabourNo} className="flex gap-2">
               <input
@@ -372,7 +452,6 @@ export const WorkerMatchPage: React.FC = () => {
           </Card>
         </div>
 
-        {/* Feedback message if any */}
         {labourFeedback.message && (
           <div
             className={`p-3 rounded-xl text-xs font-semibold ${
@@ -386,50 +465,83 @@ export const WorkerMatchPage: React.FC = () => {
         )}
       </section>
 
-      {/* Simulated Phone Call Modal */}
-      <CallModal
-        isOpen={isCallOpen}
-        onClose={() => setIsCallOpen(false)}
-        onCallAgreed={() => {
-          setIsConfirmModalOpen(true);
-        }}
-        calleeName={matchedWorker.name}
-        calleePhone={matchedWorker.phone}
-        calleeAvatar={matchedWorker.avatar}
-        roleType="employer"
-        serviceTitle={activeAgreement?.workTitle || 'Plumbing Service'}
-      />
+      {/* Bottom Finalize Bar */}
+      <div className="p-6 rounded-3xl bg-neutral-900 text-white flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg">
+        <div>
+          <h3 className="font-black text-lg">
+            Ready to confirm the booking agreement?
+          </h3>
+          <p className="text-xs text-neutral-300 mt-0.5">
+            Agreed wages will be locked in the digital agreement and sent to each worker for immediate confirmation.
+          </p>
+        </div>
 
-      {/* Post-Call Agreement Form Modal (Prompt section 29) */}
+        <Button
+          variant="primary"
+          size="lg"
+          rightIcon={<ArrowRight className="w-5 h-5" />}
+          onClick={handleOpenConfirmModal}
+          className="whitespace-nowrap font-black !bg-rozgo-500 hover:!bg-rozgo-400 text-neutral-900"
+        >
+          {activeCategories.length > 1
+            ? `Finalize Agreements for ${activeCategories.length} Trades`
+            : 'Enter Agreed Details & Send'}
+        </Button>
+      </div>
+
+      {/* Worker Profile Modal (Shows Rating, Portfolio Pictures, Certifications, etc.) */}
+      {selectedProfileWorker && (
+        <WorkerProfileModal
+          worker={selectedProfileWorker}
+          isOpen={Boolean(selectedProfileWorker)}
+          onClose={() => setSelectedProfileWorker(null)}
+          onCall={() => handleCallWorker(selectedProfileWorker.phone)}
+        />
+      )}
+
+      {/* Agreement Confirmation Modal */}
       <Modal
         isOpen={isConfirmModalOpen}
         onClose={() => setIsConfirmModalOpen(false)}
         title="Enter Agreed Booking Details"
         maxWidth="md"
       >
-        <form onSubmit={handleFinalizeBooking} className="space-y-5">
+        <form onSubmit={handleFinalizeAllBookings} className="space-y-5">
           <div className="p-3.5 rounded-2xl bg-rozgo-50 dark:bg-darkbg-surface border border-rozgo-200 text-xs text-neutral-700 dark:text-neutral-300">
-            Enter the wage and timings you mutually agreed with {matchedWorker.name} on the phone call:
+            Enter the wage mutually agreed on the phone call for each requested trade:
           </div>
 
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-neutral-500 mb-1.5">
-              {t('employerFlow.agreedWageLabel')}
-            </label>
-            <div className="relative flex items-center">
-              <span className="absolute left-3.5 font-bold text-rozgo-900 dark:text-rozgo-300">
-                ₹
-              </span>
-              <input
-                type="number"
-                min={100}
-                max={50000}
-                value={agreedWage}
-                onChange={(e) => setAgreedWage(Number(e.target.value))}
-                className="w-full pl-9 pr-4 py-3 rounded-2xl bg-neutral-50 dark:bg-darkbg-surface border border-neutral-200 dark:border-darkbg-border text-neutral-900 dark:text-white font-black text-xl focus:outline-none focus:ring-2 focus:ring-rozgo-900"
-                required
-              />
-            </div>
+          <div className="space-y-3">
+            {activeCategories.map((cat) => {
+              const service = SERVICES_DATA.find((s) => s.id === cat);
+              const name = service?.defaultName || cat;
+              return (
+                <div key={cat}>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-600 dark:text-neutral-400 mb-1">
+                    Agreed Wage for {name}
+                  </label>
+                  <div className="relative flex items-center">
+                    <span className="absolute left-3.5 font-bold text-rozgo-900 dark:text-rozgo-300">
+                      ₹
+                    </span>
+                    <input
+                      type="number"
+                      min={100}
+                      max={50000}
+                      value={wagesByTrade[cat] || 1500}
+                      onChange={(e) =>
+                        setWagesByTrade((prev) => ({
+                          ...prev,
+                          [cat]: Number(e.target.value),
+                        }))
+                      }
+                      className="w-full pl-9 pr-4 py-2.5 rounded-2xl bg-neutral-50 dark:bg-darkbg-surface border border-neutral-200 dark:border-darkbg-border text-neutral-900 dark:text-white font-black text-lg focus:outline-none focus:ring-2 focus:ring-rozgo-900"
+                      required
+                    />
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -460,13 +572,6 @@ export const WorkerMatchPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="text-xs text-neutral-500">
-            Total workers on booking:{' '}
-            <span className="font-bold text-neutral-900 dark:text-white">
-              {1 + additionalWorkers.length} Worker(s)
-            </span>
-          </div>
-
           <Button
             type="submit"
             variant="primary"
@@ -474,124 +579,96 @@ export const WorkerMatchPage: React.FC = () => {
             fullWidth
             rightIcon={<ArrowRight className="w-5 h-5" />}
           >
-            {t('employerFlow.sendConfirmationBtn')}
+            Send Agreements to Workers
           </Button>
         </form>
       </Modal>
 
-      {/* Call Worker Modal */}
-      {matchedWorker && (
-        <CallModal
-          isOpen={isCallOpen}
-          onClose={() => setIsCallOpen(false)}
-          onCallAgreed={() => {
-            setIsCallOpen(false);
-            setIsConfirmModalOpen(true);
-          }}
-          onCallRejected={() => {
-            setIsCallOpen(false);
-            rejectWorkerAndShowNext('Declined during call negotiation');
-          }}
-          calleeName={matchedWorker.name}
-          calleePhone={matchedWorker.phone}
-          calleeAvatar={matchedWorker.avatar}
-          roleType="employer"
-          serviceTitle={activeAgreement?.workTitle || `${matchedWorker.primarySkill.toUpperCase()} Service`}
-        />
-      )}
-
-      {/* Reject Booking Modal */}
+      {/* Reject / Skip Modal */}
       <Modal
         isOpen={isRejectModalOpen}
         onClose={() => setIsRejectModalOpen(false)}
-        title="Reject Booking Request"
+        title="Find Next Worker Match"
         maxWidth="md"
       >
         <div className="py-2 space-y-4">
           <div className="text-center">
-            <div className="w-16 h-16 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 flex items-center justify-center mx-auto mb-3">
-              <XCircle className="w-8 h-8" />
+            <div className="w-14 h-14 rounded-full bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-400 flex items-center justify-center mx-auto mb-3">
+              <XCircle className="w-7 h-7" />
             </div>
-            <h3 className="text-xl font-black text-neutral-900 dark:text-white">
-              Reject {matchedWorker.name} and show next worker?
+            <h3 className="text-lg font-black text-neutral-900 dark:text-white">
+              Skip worker and show next available candidate?
             </h3>
-            <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-              This will decline <span className="font-bold text-neutral-800 dark:text-neutral-200">{matchedWorker.name}</span> and immediately connect you with the next verified <span className="font-bold text-rozgo-900 dark:text-rozgo-300">{matchedWorker.primarySkill.toUpperCase()}</span> nearby.
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+              ROZGO will assign the next verified nearby worker in this category.
             </p>
           </div>
 
-          <div className="space-y-2 pt-2">
-            <label className="block text-xs font-bold uppercase tracking-wider text-neutral-600 dark:text-neutral-400">
-              Please select reason for rejection:
-            </label>
-            <div className="space-y-2">
-              {[
-                'Unable to reach agreement on wage or charges',
-                'Worker unavailable at requested time/date',
-                'Job requirement changed or cancelled',
-                'Distance or transport issue',
-                'Found alternative arrangements',
-                'Other reason',
-              ].map((reason) => (
-                <label
-                  key={reason}
-                  onClick={() => setRejectionReason(reason)}
-                  className={`flex items-center gap-2.5 p-3 rounded-xl border text-xs sm:text-sm cursor-pointer transition-all ${
-                    rejectionReason === reason
-                      ? 'border-rose-500 bg-rose-50/60 dark:bg-rose-950/40 text-rose-900 dark:text-rose-200 font-bold'
-                      : 'border-neutral-200 dark:border-darkbg-border hover:bg-neutral-50 dark:hover:bg-darkbg-surface text-neutral-700 dark:text-neutral-300'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="rejectionReason"
-                    checked={rejectionReason === reason}
-                    onChange={() => setRejectionReason(reason)}
-                    className="text-rose-600 focus:ring-rose-500"
-                  />
-                  <span>{reason}</span>
-                </label>
-              ))}
-            </div>
+          <div className="space-y-2">
+            {[
+              'Unable to reach agreement on wage or charges',
+              'Worker unavailable at requested time/date',
+              'Job requirement changed or cancelled',
+              'Distance or transport issue',
+              'Other reason',
+            ].map((reason) => (
+              <label
+                key={reason}
+                onClick={() => setRejectionReason(reason)}
+                className={`flex items-center gap-2.5 p-2.5 rounded-xl border text-xs cursor-pointer transition-all ${
+                  rejectionReason === reason
+                    ? 'border-rose-500 bg-rose-50/60 text-rose-900 font-bold'
+                    : 'border-neutral-200 hover:bg-neutral-50 text-neutral-700'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="rejectionReason"
+                  checked={rejectionReason === reason}
+                  onChange={() => setRejectionReason(reason)}
+                  className="text-rose-600 focus:ring-rose-500"
+                />
+                <span>{reason}</span>
+              </label>
+            ))}
           </div>
 
-          <div className="flex gap-3 pt-4 border-t border-neutral-100 dark:border-darkbg-border">
+          <div className="flex gap-3 pt-2">
             <Button
               variant="outline"
-              size="lg"
+              size="md"
               fullWidth
               onClick={() => setIsRejectModalOpen(false)}
             >
-              Keep Current Worker
+              Cancel
             </Button>
             <Button
               variant="danger"
-              size="lg"
+              size="md"
               fullWidth
-              leftIcon={<XCircle className="w-5 h-5" />}
               onClick={() => {
-                rejectWorkerAndShowNext(rejectionReason);
+                rejectWorkerAndShowNext(rejectionReason, rejectingCategory);
                 setIsRejectModalOpen(false);
               }}
             >
-              Reject & Show Next Worker
+              Show Next Worker
             </Button>
           </div>
         </div>
       </Modal>
 
       {/* Generated Agreement Document Modal */}
-      {activeAgreement && (
+      {viewingAgreement && (
         <BookingAgreementModal
           isOpen={isAgreementOpen}
           onClose={() => {
             setIsAgreementOpen(false);
             navigate('/employer/requests');
           }}
-          agreement={activeAgreement}
+          agreement={viewingAgreement}
           isEmployerPerspective={true}
           onEmployerReject={() => {
-            rejectWorkerAndShowNext('Declined from agreement modal');
+            rejectWorkerAndShowNext('Declined from agreement modal', viewingAgreement.serviceCategory);
             setIsAgreementOpen(false);
           }}
         />
@@ -599,4 +676,3 @@ export const WorkerMatchPage: React.FC = () => {
     </div>
   );
 };
-

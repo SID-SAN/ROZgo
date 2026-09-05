@@ -10,12 +10,14 @@ import { Header } from './components/navigation/Header';
 import { Footer } from './components/navigation/Footer';
 import { MobileNav } from './components/navigation/MobileNav';
 
-// Auto scroll to top on route change
+// Auto scroll to top on route change unless hash is present
 const ScrollToTop = () => {
-  const { pathname } = useLocation();
+  const { pathname, hash } = useLocation();
   useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [pathname]);
+    if (!hash) {
+      window.scrollTo(0, 0);
+    }
+  }, [pathname, hash]);
   return null;
 };
 
@@ -33,15 +35,15 @@ import { PublicWorkerProfilePage } from './pages/worker/PublicWorkerProfilePage'
 import { CompletedWorksPage } from './pages/worker/CompletedWorksPage';
 import { WorkerVerificationPage } from './pages/worker/WorkerVerificationPage';
 
-import { AdminVerificationPage } from './pages/admin/AdminVerificationPage';
-
 import { EmployerHomePage } from './pages/employer/EmployerHomePage';
 import { CreateWorkRequestPage } from './pages/employer/CreateWorkRequestPage';
 import { WorkerMatchPage } from './pages/employer/WorkerMatchPage';
 import { MyRequestsPage } from './pages/employer/MyRequestsPage';
+import { EmployerCompletedWorksPage } from './pages/employer/EmployerCompletedWorksPage';
 import { EmployerProfilePage } from './pages/employer/EmployerProfilePage';
 
 import { AboutPage } from './pages/about/AboutPage';
+import { SupportTrustPage } from './pages/support/SupportTrustPage';
 
 // Grievance Pages
 import { GrievanceLandingPage } from './pages/grievance/GrievanceLandingPage';
@@ -70,6 +72,7 @@ export const App: React.FC = () => {
                       {/* Public & Landing */}
                       <Route path="/" element={<LandingPage />} />
                       <Route path="/about" element={<AboutPage />} />
+                      <Route path="/support" element={<SupportTrustPage />} />
 
                       {/* Grievance & Redressal Journeys */}
                       <Route path="/help" element={<GrievanceLandingPage />} />
@@ -95,14 +98,16 @@ export const App: React.FC = () => {
                       <Route path="/worker/:labourId" element={<PublicWorkerProfilePage />} />
                       <Route path="/worker/verify" element={<WorkerVerificationPage />} />
 
-                      {/* Admin Verification Console */}
-                      <Route path="/admin/verification" element={<AdminVerificationPage />} />
+                      {/* Admin route redirect */}
+                      <Route path="/admin/verification" element={<Navigate to="/worker/verify" replace />} />
 
                       {/* Employer Journeys */}
                       <Route path="/employer" element={<EmployerHomePage />} />
                       <Route path="/employer/request" element={<CreateWorkRequestPage />} />
                       <Route path="/employer/match" element={<WorkerMatchPage />} />
                       <Route path="/employer/requests" element={<MyRequestsPage />} />
+                      <Route path="/employer/completed-services" element={<EmployerCompletedWorksPage />} />
+                      <Route path="/employer/history" element={<EmployerCompletedWorksPage />} />
                       <Route path="/employer/profile" element={<EmployerProfilePage />} />
 
                       {/* Legacy / Catch-all redirects */}

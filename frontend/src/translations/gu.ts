@@ -47,7 +47,7 @@ export const gu = {
     switchMode: 'મોડ બદલો',
   },
   landing: {
-    heroBadge: '🤝 કારીગરોનું પોતાનું સહકારી મંચ',
+    heroBadge: 'કારીગરોનું પોતાનું સહકારી મંચ',
     heroLine1: 'કામ મેળવો.',
     heroLine2: 'વિશ્વાસુ કારીગરો મેળવો.',
     heroLine3: 'સાથે આગળ વધો.',

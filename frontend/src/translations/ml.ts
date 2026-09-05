@@ -47,7 +47,7 @@ export const ml = {
     switchMode: 'മാറുക',
   },
   landing: {
-    heroBadge: '🤝 തൊഴിലാളികളുടെ സഹകരണ വേദി',
+    heroBadge: 'തൊഴിലാളികളുടെ സഹകരണ വേദി',
     heroLine1: 'ജോലി നേടൂ.',
     heroLine2: 'വിശ്വസ്തരായ തൊഴിലാളികളെ കണ്ടെത്തൂ.',
     heroLine3: 'ഒരുമിച്ച് വളരാം.',

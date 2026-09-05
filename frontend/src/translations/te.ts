@@ -47,7 +47,7 @@ export const te = {
     switchMode: 'మార్చు',
   },
   landing: {
-    heroBadge: '🤝 కార్మికుల సొంత సహకార వేదిక',
+    heroBadge: 'కార్మికుల సొంత సహకార వేదిక',
     heroLine1: 'పని పొందండి.',
     heroLine2: 'నమ్మకమైన కార్మికులను కనుగొనండి.',
     heroLine3: 'కలిసి ఎదుగుదాం.',

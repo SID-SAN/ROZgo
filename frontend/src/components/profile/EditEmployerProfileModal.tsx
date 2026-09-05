@@ -27,7 +27,7 @@ const AVAILABLE_TRADES = [
   { id: 'carpenter', label: 'Carpenter', icon: '🪚' },
   { id: 'painter', label: 'Painter', icon: '🎨' },
   { id: 'mason', label: 'Mason / Rajmistri', icon: '🧱' },
-  { id: 'daily_helper', label: 'Daily Helper / Beldar', icon: '👷' },
+  { id: 'daily_helper', label: 'Daily Helper / Beldar', icon: '🛠️' },
   { id: 'domestic_help', label: 'Domestic Help / Maid', icon: '🧹' },
   { id: 'ac_repair', label: 'AC & Appliance Repair', icon: '❄️' },
   { id: 'driver', label: 'Driver', icon: '🚗' },

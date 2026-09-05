@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Clock, ShieldAlert, Phone, CheckCircle2, XCircle, ArrowRight, Loader2 } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { Clock, ShieldAlert, Phone, ArrowRight, Loader2, RefreshCw } from 'lucide-react';
+import { useBooking } from '../../context/BookingContext';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
 
@@ -11,7 +12,6 @@ interface WaitingForAgreementModalProps {
   workTitle: string;
   onAgreementArrived: () => void;
   onReject?: () => void;
-  autoArriveSeconds?: number;
 }
 
 export const WaitingForAgreementModal: React.FC<WaitingForAgreementModalProps> = ({
@@ -22,30 +22,15 @@ export const WaitingForAgreementModal: React.FC<WaitingForAgreementModalProps> =
   workTitle,
   onAgreementArrived,
   onReject,
-  autoArriveSeconds = 3,
 }) => {
-  const [secondsRemaining, setSecondsRemaining] = useState(autoArriveSeconds);
+  const { activeAgreement } = useBooking();
 
+  // If employer submits agreement in real-time while modal is open, trigger arrival immediately
   useEffect(() => {
-    if (!isOpen) {
-      setSecondsRemaining(autoArriveSeconds);
-      return;
+    if (isOpen && activeAgreement && activeAgreement.status === 'awaiting_confirmation') {
+      onAgreementArrived();
     }
-
-    setSecondsRemaining(autoArriveSeconds);
-    const interval = setInterval(() => {
-      setSecondsRemaining((prev) => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          onAgreementArrived();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [isOpen, autoArriveSeconds, onAgreementArrived]);
+  }, [isOpen, activeAgreement, onAgreementArrived]);
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} maxWidth="md">
@@ -114,7 +99,7 @@ export const WaitingForAgreementModal: React.FC<WaitingForAgreementModalProps> =
             }}
             className="border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-300"
           >
-            Cancel / Reject Call
+            Cancel Negotiation
           </Button>
 
           <Button
@@ -129,7 +114,7 @@ export const WaitingForAgreementModal: React.FC<WaitingForAgreementModalProps> =
             className="!bg-[#123B32] hover:!bg-[#0c2721] text-white font-bold"
             rightIcon={<ArrowRight className="w-4 h-4" />}
           >
-            Show Agreement ({secondsRemaining}s)
+            Review Agreement
           </Button>
         </div>
       </div>

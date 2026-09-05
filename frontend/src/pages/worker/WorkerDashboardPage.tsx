@@ -25,7 +25,6 @@ import { ActiveBookingCard } from '../../components/bookings/ActiveBookingCard';
 import { BookingAgreementModal } from '../../components/bookings/BookingAgreementModal';
 import { WaitingForAgreementModal } from '../../components/bookings/WaitingForAgreementModal';
 import { RatingReviewModal } from '../../components/bookings/RatingReviewModal';
-import { CallModal } from '../../components/common/CallModal';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
@@ -50,7 +49,6 @@ export const WorkerDashboardPage: React.FC = () => {
   const { activeGrievancesCount } = useGrievance();
 
   // Dialog states
-  const [isCallOpen, setIsCallOpen] = useState(false);
   const [isWaitingAgreement, setIsWaitingAgreement] = useState(false);
   const [pendingCallJob, setPendingCallJob] = useState<JobRecommendation | null>(null);
   const [activeCallTarget, setActiveCallTarget] = useState<{
@@ -78,9 +76,13 @@ export const WorkerDashboardPage: React.FC = () => {
   })();
 
   const handleAcceptWork = (job: JobRecommendation) => {
-    const newAg = selectJobAsActiveAgreement(job, 1200);
-    workerConfirmBooking(newAg.id, true);
-    setIsAgreementOpen(true);
+    setPendingCallJob(job);
+    setActiveCallTarget({
+      name: job.employerName,
+      phone: job.employerPhone,
+      title: job.subcategory,
+    });
+    setIsWaitingAgreement(true);
   };
 
   const handleCallEmployer = (job: JobRecommendation) => {
@@ -90,17 +92,15 @@ export const WorkerDashboardPage: React.FC = () => {
       phone: job.employerPhone,
       title: job.subcategory,
     });
-    setIsCallOpen(true);
+    const phone = job.employerPhone.replace(/[^0-9+]/g, '') || job.employerPhone;
+    window.location.href = `tel:${phone}`;
+    setIsWaitingAgreement(true);
   };
 
   const handleCallFromActiveBooking = () => {
     if (!activeAgreement) return;
-    setActiveCallTarget({
-      name: activeAgreement.employerName,
-      phone: activeAgreement.employerPhone,
-      title: activeAgreement.workTitle,
-    });
-    setIsCallOpen(true);
+    const phone = activeAgreement.employerPhone.replace(/[^0-9+]/g, '') || activeAgreement.employerPhone;
+    window.location.href = `tel:${phone}`;
   };
 
   const handleCallAgreed = () => {
@@ -140,7 +140,7 @@ export const WorkerDashboardPage: React.FC = () => {
         <div className="space-y-0.5">
           <div className="flex items-center gap-2.5 sm:gap-3">
             <h1 className="text-lg sm:text-2xl font-black text-neutral-900 dark:text-white tracking-tight">
-              {t('workerDashboard.greeting')}, {workerUser.name.split(' ')[0]} 👋
+              {t('workerDashboard.greeting')}, {workerUser.name.split(' ')[0]}
             </h1>
             {workerUser.labourNumber && workerUser.isVerified ? (
               <Badge variant="verified" size="sm">
@@ -241,7 +241,8 @@ export const WorkerDashboardPage: React.FC = () => {
                   </div>
                   <div>
                     <div className="inline-flex items-center gap-1.5 text-xs font-black uppercase tracking-wider text-amber-800 dark:text-amber-300 mb-1">
-                      <span>🟡 Verification in Progress</span>
+                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                      <span>Verification in Progress</span>
                     </div>
                     <h4 className="text-base font-black text-neutral-900 dark:text-white">
                       Your documents are being verified by our team.
@@ -603,16 +604,6 @@ export const WorkerDashboardPage: React.FC = () => {
         </div>
       </section>
 
-      {/* Simulated Phone Call Modal */}
-      <CallModal
-        isOpen={isCallOpen}
-        onClose={() => setIsCallOpen(false)}
-        onCallAgreed={handleCallAgreed}
-        calleeName={activeCallTarget.name}
-        calleePhone={activeCallTarget.phone}
-        roleType="worker"
-        serviceTitle={activeCallTarget.title}
-      />
 
       {/* Waiting for Agreement Details by Employer Modal */}
       <WaitingForAgreementModal

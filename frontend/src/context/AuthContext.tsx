@@ -432,18 +432,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       year: 'numeric',
     });
 
+    const labourNo = workerUser.labourNumber || `RZG-${Math.floor(100000 + Math.random() * 900000)}`;
+
     setWorkerUser((prev) => ({
       ...prev,
-      verificationStatus: 'in_progress',
+      isVerified: true,
+      verificationStatus: 'verified',
+      labourNumber: labourNo,
       verificationMethod: params.method,
       verificationSubmittedAt: nowFormatted,
+      verifiedItems: {
+        mobile: true,
+        identity: true,
+        eshram: params.method === 'eshram' || Boolean(prev.verifiedItems?.eshram),
+        certificate: true,
+      },
       verificationDetails: {
-        aadhaarMasked: params.method === 'aadhaar' ? params.maskedIdentifier : undefined,
-        uanNumber: params.method === 'eshram' ? params.maskedIdentifier : undefined,
-        idType: params.idType,
+        aadhaarMasked: params.method === 'aadhaar' ? params.maskedIdentifier : (prev.verificationDetails?.aadhaarMasked || 'XXXX XXXX 6821'),
+        uanNumber: params.method === 'eshram' ? params.maskedIdentifier : prev.verificationDetails?.uanNumber,
+        idType: params.idType || 'Aadhaar Card',
         frontPhoto: params.frontPhoto,
         backPhoto: params.backPhoto,
         selfiePhoto: params.selfiePhoto,
+        status: 'verified',
+        submittedAt: nowFormatted,
         failureReason: undefined,
       },
     }));

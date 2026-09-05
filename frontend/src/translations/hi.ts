@@ -50,7 +50,7 @@ export const hi = {
     raiseGrievance: 'शिकायत दर्ज करें',
   },
   landing: {
-    heroBadge: '🤝 कामगारों का अपना सहकारी मंच',
+    heroBadge: 'कामगारों का अपना सहकारी मंच',
     heroLine1: 'काम पाएं।',
     heroLine2: 'भरोसेमंद कामगार पाएं।',
     heroLine3: 'साथ आगे बढ़ें।',
