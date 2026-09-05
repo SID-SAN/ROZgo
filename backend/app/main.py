@@ -11,6 +11,7 @@ from app.routers.employers import router as employers_router
 from app.routers.services import router as services_router
 from app.routers.bookings import router as bookings_router
 from app.routers.uploads import router as uploads_router
+from app.routers.sync import router as sync_router
 
 app = FastAPI(
     title="ROZgo API",
@@ -62,6 +63,7 @@ app.include_router(employers_router, prefix=API_PREFIX)
 app.include_router(services_router, prefix=API_PREFIX)
 app.include_router(bookings_router, prefix=API_PREFIX)
 app.include_router(uploads_router, prefix=API_PREFIX)
+app.include_router(sync_router, prefix=API_PREFIX)
 
 # Global exception handler
 @app.exception_handler(Exception)

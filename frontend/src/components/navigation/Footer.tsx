@@ -200,7 +200,7 @@ export const Footer: React.FC = () => {
                   className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-rozgo-800 text-rozgo-200 hover:text-white text-xs font-bold border border-rozgo-700"
                 >
                   <PhoneCall className="w-3.5 h-3.5" />
-                  <span>Support: 1800-ROZGO</span>
+                  <span>Support: TOLL-FREE</span>
                 </a>
               </li>
             </ul>
