@@ -27,7 +27,6 @@ import { useBooking } from '../../context/BookingContext';
 import { WorkerProfile } from '../../types';
 import { VerifiedBadgeModal } from '../../components/profile/VerifiedBadgeModal';
 import { ShareProfileModal } from '../../components/profile/ShareProfileModal';
-import { CallModal } from '../../components/common/CallModal';
 
 export const PublicWorkerProfilePage: React.FC = () => {
   const { labourId } = useParams<{ labourId: string }>();
@@ -55,7 +54,6 @@ export const PublicWorkerProfilePage: React.FC = () => {
   // Modals
   const [isVerifiedModalOpen, setIsVerifiedModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
-  const [isCallOpen, setIsCallOpen] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [isBookingSuccess, setIsBookingSuccess] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -84,6 +82,11 @@ export const PublicWorkerProfilePage: React.FC = () => {
     } else {
       navigate('/employer/request');
     }
+  };
+
+  const handleCallWorker = () => {
+    const phone = worker.phone.replace(/[^0-9+]/g, '') || worker.phone;
+    window.location.href = `tel:${phone}`;
   };
 
   return (
@@ -217,7 +220,7 @@ export const PublicWorkerProfilePage: React.FC = () => {
                 </button>
 
                 <button
-                  onClick={() => setIsCallOpen(true)}
+                  onClick={handleCallWorker}
                   className="px-5 py-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-[#123B32] dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-bold text-xs hover:bg-emerald-100 transition-colors flex items-center gap-2"
                 >
                   <Phone className="w-4 h-4" />
@@ -485,20 +488,6 @@ export const PublicWorkerProfilePage: React.FC = () => {
         worker={worker}
       />
 
-      {/* Direct Call Modal */}
-      <CallModal
-        isOpen={isCallOpen}
-        onClose={() => setIsCallOpen(false)}
-        onCallAgreed={() => {
-          setIsCallOpen(false);
-          handleHireDirect();
-        }}
-        calleeName={worker.name}
-        calleePhone={worker.phone}
-        calleeAvatar={worker.avatar}
-        roleType="worker"
-        serviceTitle={worker.primarySkill}
-      />
     </div>
   );
 };

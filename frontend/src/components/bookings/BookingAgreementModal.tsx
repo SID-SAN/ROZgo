@@ -165,6 +165,19 @@ export const BookingAgreementModal: React.FC<BookingAgreementModalProps> = ({
           </p>
         </div>
 
+        {/* Employer Perspective Notice when awaiting worker confirmation */}
+        {isEmployerPerspective && agreement.status === 'awaiting_confirmation' && (
+          <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-700/60 text-amber-950 dark:text-amber-200 text-xs sm:text-sm flex items-start gap-3">
+            <Clock className="w-5 h-5 text-amber-700 dark:text-amber-400 shrink-0 mt-0.5 animate-pulse" />
+            <div>
+              <div className="font-bold">Awaiting Worker Confirmation</div>
+              <p className="text-xs text-amber-900/80 dark:text-amber-300/80 mt-0.5">
+                These booking terms have been submitted. The booking is waiting for {agreement.workers[0]?.name || 'the worker'} to respond and confirm from their dashboard.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Action Buttons */}
         {isWorkerPerspective && agreement.status === 'awaiting_confirmation' ? (
           <div className="pt-2 flex flex-col sm:flex-row gap-3">
@@ -197,7 +210,7 @@ export const BookingAgreementModal: React.FC<BookingAgreementModalProps> = ({
           </div>
         ) : (
           <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 no-print">
-            {isEmployerPerspective && onEmployerReject && agreement.status !== 'completed' && agreement.status !== 'rejected' ? (
+            {isEmployerPerspective && onEmployerReject && agreement.status === 'awaiting_confirmation' ? (
               <Button
                 variant="outline"
                 size="md"

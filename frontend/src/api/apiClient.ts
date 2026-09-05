@@ -61,7 +61,9 @@ class ApiClient {
         let errorData = null;
         try {
           errorData = await response.json();
-          if (errorData?.message) {
+          if (errorData?.detail) {
+            errorMessage = typeof errorData.detail === 'string' ? errorData.detail : JSON.stringify(errorData.detail);
+          } else if (errorData?.message) {
             errorMessage = errorData.message;
           }
         } catch {

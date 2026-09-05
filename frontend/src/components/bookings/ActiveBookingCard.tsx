@@ -38,21 +38,53 @@ export const ActiveBookingCard: React.FC<ActiveBookingCardProps> = ({
       <Card
         variant="elevated"
         padding="lg"
-        className="border-2 border-rozgo-900 dark:border-rozgo-700 relative overflow-hidden"
+        className={`border-2 ${
+          booking.status === 'awaiting_confirmation'
+            ? 'border-amber-400 dark:border-amber-600'
+            : 'border-rozgo-900 dark:border-rozgo-700'
+        } relative overflow-hidden`}
       >
         {/* Top Status Bar */}
         <div className="flex items-center justify-between pb-4 border-b border-neutral-200 dark:border-darkbg-border mb-4">
           <div className="flex items-center gap-2">
-            <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs font-black tracking-wider uppercase text-rozgo-900 dark:text-rozgo-300">
-              ACTIVE BOOKING IN PROGRESS
-            </span>
+            {booking.status === 'awaiting_confirmation' ? (
+              <>
+                <span className="w-3 h-3 rounded-full bg-amber-500 animate-pulse" />
+                <span className="text-xs font-black tracking-wider uppercase text-amber-800 dark:text-amber-300">
+                  {role === 'worker' ? 'CONFIRMATION REQUIRED' : 'WAITING FOR WORKER CONFIRMATION'}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-xs font-black tracking-wider uppercase text-rozgo-900 dark:text-rozgo-300">
+                  ACTIVE BOOKING IN PROGRESS
+                </span>
+              </>
+            )}
           </div>
 
-          <Badge variant="success" size="sm">
-            #{booking.bookingNumber}
+          <Badge
+            variant={booking.status === 'awaiting_confirmation' ? 'warning' : 'success'}
+            size="sm"
+          >
+            {booking.status === 'awaiting_confirmation'
+              ? 'Awaiting Worker Response'
+              : '#' + booking.bookingNumber}
           </Badge>
         </div>
+
+        {/* Awaiting Confirmation Notice Banner */}
+        {booking.status === 'awaiting_confirmation' && (
+          <div className="p-3.5 rounded-2xl bg-amber-50/90 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800/60 text-amber-950 dark:text-amber-200 text-xs flex items-center gap-2.5 mb-4">
+            <Clock className="w-4 h-4 text-amber-700 dark:text-amber-400 shrink-0 animate-pulse" />
+            <span>
+              {role === 'employer'
+                ? `Agreed terms sent to ${counterpartyName}. Waiting for the worker to accept and confirm the booking.`
+                : `Booking agreement sent by ${counterpartyName}. Please review and confirm.`}
+            </span>
+          </div>
+        )}
 
         {/* Title & Wage */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
@@ -128,7 +160,7 @@ export const ActiveBookingCard: React.FC<ActiveBookingCardProps> = ({
             <span>Report a Problem</span>
           </Link>
 
-          {role === 'employer' && onRejectBooking && booking.status !== 'completed' && booking.status !== 'rejected' && (
+          {role === 'employer' && onRejectBooking && booking.status === 'awaiting_confirmation' && (
             <Button
               variant="outline"
               size="md"
@@ -136,19 +168,21 @@ export const ActiveBookingCard: React.FC<ActiveBookingCardProps> = ({
               onClick={() => setIsRejectOpen(true)}
               className="border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-300 font-bold"
             >
-              Reject Booking
+              Cancel Request
             </Button>
           )}
 
-          <Button
-            variant="success"
-            size="md"
-            className="sm:ml-auto"
-            leftIcon={<CheckCircle2 className="w-4 h-4" />}
-            onClick={() => setIsConfirmOpen(true)}
-          >
-            Work Completed
-          </Button>
+          {booking.status === 'confirmed' && (
+            <Button
+              variant="success"
+              size="md"
+              className="sm:ml-auto"
+              leftIcon={<CheckCircle2 className="w-4 h-4" />}
+              onClick={() => setIsConfirmOpen(true)}
+            >
+              Work Completed
+            </Button>
+          )}
         </div>
       </Card>
 

@@ -11,42 +11,53 @@ import {
 import { MOCK_WORKERS } from '../data/mockWorkers';
 import { MOCK_JOBS } from '../data/mockJobs';
 
+export interface StartWorkRequestParams {
+  serviceCategory?: string;
+  serviceCategories?: string[];
+  subcategory?: string;
+  categoryTasks?: Record<string, string>;
+  difficulty: DifficultyLevel;
+  description: string;
+  location: string;
+  preferredDate: string;
+  preferredTime: string;
+  workersNeeded?: number;
+  workersNeededPerCategory?: Record<string, number>;
+}
+
 interface BookingContextType {
-  // Current active agreement for demo/flows
+  // Current active agreements list
+  activeAgreements: BookingAgreement[];
+  // Current active agreement for single-agreement demo/flows (falls back to activeAgreements[0])
   activeAgreement: BookingAgreement | null;
   // History of completed agreements
   completedAgreements: BookingAgreement[];
   // Matching state for employer
   matchedWorker: WorkerProfile | null;
+  matchedWorkersByTrade: Record<string, WorkerProfile>;
+  requestedCategories: string[];
   additionalWorkers: BookingWorkerItem[];
   // Matching state for worker
   currentJobIndex: number;
   currentJob: JobRecommendation | null;
   isSearchingNextJob: boolean;
   // Methods
-  startWorkRequest: (params: {
-    serviceCategory: string;
-    subcategory: string;
-    difficulty: DifficultyLevel;
-    description: string;
-    location: string;
-    preferredDate: string;
-    preferredTime: string;
-    workersNeeded: number;
-  }) => WorkerProfile | null;
-  addWorkerByLabourNumber: (labourNo: string) => { success: boolean; message: string; worker?: WorkerProfile };
-  addRecommendedWorker: () => boolean;
-  removeWorkerFromBooking: (workerId: string) => void;
+  startWorkRequest: (params: StartWorkRequestParams) => WorkerProfile | null;
+  addWorkerByLabourNumber: (labourNo: string, targetAgreementId?: string) => { success: boolean; message: string; worker?: WorkerProfile };
+  addRecommendedWorker: (targetAgreementId?: string) => boolean;
+  removeWorkerFromBooking: (workerId: string, targetAgreementId?: string) => void;
   confirmAgreementDetails: (params: {
+    agreementId?: string;
     agreedWage: number;
     date: string;
     time: string;
   }) => BookingAgreement;
+  confirmAllPendingAgreements: (agreedWages: Record<string, number>, date: string, time: string) => BookingAgreement[];
   selectJobAsActiveAgreement: (job: JobRecommendation, wage?: number) => BookingAgreement;
   workerConfirmBooking: (agreementId: string, accept: boolean) => void;
-  employerRejectBooking: (reason?: string) => void;
-  switchMatchedWorker: (nextWorkerId?: string) => WorkerProfile | null;
-  rejectWorkerAndShowNext: (reason?: string) => { nextWorker: WorkerProfile | null; noMoreWorkers: boolean };
+  employerRejectBooking: (reason?: string, agreementId?: string) => void;
+  switchMatchedWorker: (nextWorkerId?: string, tradeCategory?: string) => WorkerProfile | null;
+  rejectWorkerAndShowNext: (reason?: string, tradeCategory?: string) => { nextWorker: WorkerProfile | null; noMoreWorkers: boolean };
   previousWorkerFeedback: { workerName: string; reason: string } | null;
   clearPreviousWorkerFeedback: () => void;
   markWorkCompleted: (agreementId: string) => void;
@@ -55,34 +66,36 @@ interface BookingContextType {
   resetDemoBooking: () => void;
 }
 
-const INITIAL_ACTIVE_BOOKING: BookingAgreement = {
-  id: 'bk-demo-1',
-  bookingNumber: 'RZG-BK-8419',
-  workTitle: 'Tap Repair & Washroom Leakage',
-  serviceCategory: 'plumber',
-  subcategory: 'Tap Repair & Fitting',
-  difficulty: 'Intermediate',
-  description: 'Bathroom wall mixer dripping continuously, need angle valve servicing.',
-  location: 'Tower 4, Sushant Lok 1, Gurgaon',
-  employerId: 'e1',
-  employerName: 'Rahul Sharma',
-  employerPhone: '+91 98111 88234',
-  workers: [
-    {
-      workerId: 'w1',
-      name: 'Amit Kumar',
-      labourNumber: 'RZG-849201',
-      phone: '+91 98712 34567',
-      avatar: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=160&auto=format&fit=crop&q=80',
-    },
-  ],
-  workersCount: 1,
-  date: '12 Sept 2026',
-  time: '10:00 AM',
-  agreedWage: 1500,
-  status: 'confirmed',
-  createdAt: '12 Sept 2026, 09:15 AM',
-};
+const INITIAL_ACTIVE_BOOKINGS: BookingAgreement[] = [
+  {
+    id: 'bk-demo-1',
+    bookingNumber: 'RZG-BK-8419',
+    workTitle: 'Tap Repair & Washroom Leakage',
+    serviceCategory: 'plumber',
+    subcategory: 'Tap Repair & Fitting',
+    difficulty: 'Intermediate',
+    description: 'Bathroom wall mixer dripping continuously, need angle valve servicing.',
+    location: 'Tower 4, Sushant Lok 1, Gurgaon',
+    employerId: 'e1',
+    employerName: 'Rahul Sharma',
+    employerPhone: '+91 98111 88234',
+    workers: [
+      {
+        workerId: 'w1',
+        name: 'Ramesh Kumar',
+        labourNumber: 'RZG-104582',
+        phone: '+91 98765 43210',
+        avatar: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=160&auto=format&fit=crop&q=80',
+      },
+    ],
+    workersCount: 1,
+    date: '12 Sept 2026',
+    time: '10:00 AM',
+    agreedWage: 1500,
+    status: 'confirmed',
+    createdAt: '12 Sept 2026, 09:15 AM',
+  },
+];
 
 const INITIAL_COMPLETED_BOOKINGS: BookingAgreement[] = [
   {
@@ -99,7 +112,7 @@ const INITIAL_COMPLETED_BOOKINGS: BookingAgreement[] = [
     employerPhone: '+91 98103 44102',
     workers: [
       {
-        workerId: 'w1',
+        workerId: 'w10',
         name: 'Amit Kumar',
         labourNumber: 'RZG-849201',
         phone: '+91 98712 34567',
@@ -128,7 +141,7 @@ const INITIAL_COMPLETED_BOOKINGS: BookingAgreement[] = [
     employerPhone: '+91 98210 55921',
     workers: [
       {
-        workerId: 'w1',
+        workerId: 'w10',
         name: 'Amit Kumar',
         labourNumber: 'RZG-849201',
         phone: '+91 98712 34567',
@@ -157,7 +170,7 @@ const INITIAL_COMPLETED_BOOKINGS: BookingAgreement[] = [
     employerPhone: '+91 98731 22890',
     workers: [
       {
-        workerId: 'w1',
+        workerId: 'w10',
         name: 'Amit Kumar',
         labourNumber: 'RZG-849201',
         phone: '+91 98712 34567',
@@ -186,7 +199,7 @@ const INITIAL_COMPLETED_BOOKINGS: BookingAgreement[] = [
     employerPhone: '+91 98118 77201',
     workers: [
       {
-        workerId: 'w1',
+        workerId: 'w10',
         name: 'Amit Kumar',
         labourNumber: 'RZG-849201',
         phone: '+91 98712 34567',
@@ -215,7 +228,7 @@ const INITIAL_COMPLETED_BOOKINGS: BookingAgreement[] = [
     employerPhone: '+91 98711 44521',
     workers: [
       {
-        workerId: 'w1',
+        workerId: 'w10',
         name: 'Amit Kumar',
         labourNumber: 'RZG-849201',
         phone: '+91 98712 34567',
@@ -244,7 +257,7 @@ const INITIAL_COMPLETED_BOOKINGS: BookingAgreement[] = [
     employerPhone: '+91 98102 99182',
     workers: [
       {
-        workerId: 'w1',
+        workerId: 'w10',
         name: 'Amit Kumar',
         labourNumber: 'RZG-849201',
         phone: '+91 98712 34567',
@@ -273,7 +286,7 @@ const INITIAL_COMPLETED_BOOKINGS: BookingAgreement[] = [
     employerPhone: '+91 98991 33412',
     workers: [
       {
-        workerId: 'w1',
+        workerId: 'w10',
         name: 'Amit Kumar',
         labourNumber: 'RZG-849201',
         phone: '+91 98712 34567',
@@ -293,16 +306,26 @@ const INITIAL_COMPLETED_BOOKINGS: BookingAgreement[] = [
 const BookingContext = createContext<BookingContextType | undefined>(undefined);
 
 export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [activeAgreement, setActiveAgreement] = useState<BookingAgreement | null>(() => {
-    const saved = localStorage.getItem('rozgo_active_agreement');
+  const [activeAgreements, setActiveAgreements] = useState<BookingAgreement[]>(() => {
+    const saved = localStorage.getItem('rozgo_active_agreements');
     if (saved) {
       try {
-        return JSON.parse(saved);
-      } catch {
-        // fallback
-      }
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      } catch {}
     }
-    return INITIAL_ACTIVE_BOOKING;
+    const singleSaved = localStorage.getItem('rozgo_active_agreement');
+    if (singleSaved) {
+      try {
+        const parsed = JSON.parse(singleSaved);
+        if (parsed && typeof parsed === 'object') {
+          return [parsed];
+        }
+      } catch {}
+    }
+    return INITIAL_ACTIVE_BOOKINGS;
   });
 
   const [completedAgreements, setCompletedAgreements] = useState<BookingAgreement[]>(() => {
@@ -313,14 +336,19 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
         if (Array.isArray(parsed) && parsed.length >= INITIAL_COMPLETED_BOOKINGS.length) {
           return parsed;
         }
-      } catch {
-        // fallback
-      }
+      } catch {}
     }
     return INITIAL_COMPLETED_BOOKINGS;
   });
 
-  const [matchedWorker, setMatchedWorker] = useState<WorkerProfile | null>(MOCK_WORKERS[0]);
+  const [requestedCategories, setRequestedCategories] = useState<string[]>(['plumber']);
+  const [matchedWorkersByTrade, setMatchedWorkersByTrade] = useState<Record<string, WorkerProfile>>(() => {
+    return {
+      plumber: MOCK_WORKERS[0],
+      mason: MOCK_WORKERS.find((w) => w.primarySkill === 'mason') || MOCK_WORKERS[4],
+    };
+  });
+
   const [additionalWorkers, setAdditionalWorkers] = useState<BookingWorkerItem[]>([]);
   const [rejectedWorkerIds, setRejectedWorkerIds] = useState<string[]>([]);
   const [previousWorkerFeedback, setPreviousWorkerFeedback] = useState<{
@@ -330,79 +358,143 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const clearPreviousWorkerFeedback = () => setPreviousWorkerFeedback(null);
 
-  // Worker match recommendations
   const [currentJobIndex, setCurrentJobIndex] = useState<number>(0);
   const [isSearchingNextJob, setIsSearchingNextJob] = useState<boolean>(false);
 
+  const activeAgreement = activeAgreements.length > 0 ? activeAgreements[0] : null;
+  const matchedWorker =
+    matchedWorkersByTrade[requestedCategories[0] || 'plumber'] ||
+    MOCK_WORKERS[0];
+
   useEffect(() => {
-    if (activeAgreement) {
-      localStorage.setItem('rozgo_active_agreement', JSON.stringify(activeAgreement));
+    localStorage.setItem('rozgo_active_agreements', JSON.stringify(activeAgreements));
+    if (activeAgreements.length > 0) {
+      localStorage.setItem('rozgo_active_agreement', JSON.stringify(activeAgreements[0]));
     } else {
       localStorage.removeItem('rozgo_active_agreement');
     }
-  }, [activeAgreement]);
+  }, [activeAgreements]);
 
   useEffect(() => {
     localStorage.setItem('rozgo_completed_agreements', JSON.stringify(completedAgreements));
   }, [completedAgreements]);
 
+  useEffect(() => {
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'rozgo_active_agreements') {
+        if (e.newValue) {
+          try {
+            setActiveAgreements(JSON.parse(e.newValue));
+          } catch {}
+        } else {
+          setActiveAgreements([]);
+        }
+      } else if (e.key === 'rozgo_active_agreement' && e.newValue) {
+        try {
+          const single = JSON.parse(e.newValue);
+          if (single) {
+            setActiveAgreements((prev) => {
+              const idx = prev.findIndex((a) => a.id === single.id);
+              if (idx >= 0) {
+                const next = [...prev];
+                next[idx] = single;
+                return next;
+              }
+              return [single, ...prev];
+            });
+          }
+        } catch {}
+      }
+      if (e.key === 'rozgo_completed_agreements' && e.newValue) {
+        try {
+          setCompletedAgreements(JSON.parse(e.newValue));
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
+
   const currentJob = MOCK_JOBS[currentJobIndex] || null;
 
-  const startWorkRequest = (params: {
-    serviceCategory: string;
-    subcategory: string;
-    difficulty: DifficultyLevel;
-    description: string;
-    location: string;
-    preferredDate: string;
-    preferredTime: string;
-    workersNeeded: number;
-  }): WorkerProfile | null => {
+  const startWorkRequest = (params: StartWorkRequestParams): WorkerProfile | null => {
     setRejectedWorkerIds([]);
     setPreviousWorkerFeedback(null);
 
-    // Find workers matching category
-    const suitableWorker =
-      MOCK_WORKERS.find((w) => w.primarySkill === params.serviceCategory) || MOCK_WORKERS[0];
+    const categories =
+      params.serviceCategories && params.serviceCategories.length > 0
+        ? params.serviceCategories
+        : params.serviceCategory
+        ? [params.serviceCategory]
+        : ['plumber'];
 
-    setMatchedWorker(suitableWorker);
+    setRequestedCategories(categories);
     setAdditionalWorkers([]);
 
-    // Initialize draft agreement
-    const newBooking: BookingAgreement = {
-      id: `bk-${Date.now()}`,
-      bookingNumber: `RZG-BK-${Math.floor(1000 + Math.random() * 9000)}`,
-      workTitle: `${params.subcategory} (${params.difficulty})`,
-      serviceCategory: params.serviceCategory,
-      subcategory: params.subcategory,
-      difficulty: params.difficulty,
-      description: params.description,
-      location: params.location,
-      employerId: 'e1',
-      employerName: 'Rahul Sharma',
-      employerPhone: '+91 98111 88234',
-      workers: [
-        {
-          workerId: suitableWorker.id,
-          name: suitableWorker.name,
-          labourNumber: suitableWorker.labourNumber,
-          phone: suitableWorker.phone,
-          avatar: suitableWorker.avatar,
-        },
-      ],
-      workersCount: params.workersNeeded || 1,
-      date: params.preferredDate || 'Today',
-      time: params.preferredTime || '11:00 AM',
-      agreedWage: 1200,
-      status: 'matching',
-      createdAt: new Date().toLocaleString(),
-    };
+    const newMatchedMap: Record<string, WorkerProfile> = {};
+    const createdAgreements: BookingAgreement[] = [];
 
-    setActiveAgreement(newBooking);
-    return suitableWorker;
+    categories.forEach((cat, index) => {
+      const suitable =
+        MOCK_WORKERS.find((w) => w.primarySkill === cat) ||
+        MOCK_WORKERS[index % MOCK_WORKERS.length] ||
+        MOCK_WORKERS[0];
+
+      newMatchedMap[cat] = suitable;
+
+      const subtask =
+        (params.categoryTasks && params.categoryTasks[cat]) ||
+        params.subcategory ||
+        `${cat.charAt(0).toUpperCase() + cat.slice(1)} Service`;
+
+      const workersNeeded =
+        (params.workersNeededPerCategory && params.workersNeededPerCategory[cat]) ||
+        params.workersNeeded ||
+        1;
+
+      const booking: BookingAgreement = {
+        id: `bk-${Date.now()}-${index}-${Math.floor(Math.random() * 1000)}`,
+        bookingNumber: `RZG-BK-${Math.floor(1000 + Math.random() * 9000)}`,
+        workTitle: `${subtask} (${params.difficulty})`,
+        serviceCategory: cat,
+        subcategory: subtask,
+        difficulty: params.difficulty,
+        description: params.description,
+        location: params.location,
+        employerId: 'e1',
+        employerName: 'Rahul Sharma',
+        employerPhone: '+91 98111 88234',
+        workers: [
+          {
+            workerId: suitable.id,
+            name: suitable.name,
+            labourNumber: suitable.labourNumber,
+            phone: suitable.phone,
+            avatar: suitable.avatar,
+          },
+        ],
+        workersCount: workersNeeded,
+        date: params.preferredDate || 'Today',
+        time: params.preferredTime || '11:00 AM',
+        agreedWage: cat === 'mason' ? 1800 : cat === 'plumber' ? 1500 : 1200,
+        status: 'matching',
+        createdAt: new Date().toLocaleString(),
+      };
+
+      createdAgreements.push(booking);
+    });
+
+    setMatchedWorkersByTrade(newMatchedMap);
+
+    setActiveAgreements((prev) => {
+      const nonMatchingExisting = prev.filter((a) => a.status !== 'matching');
+      return [...createdAgreements, ...nonMatchingExisting];
+    });
+
+    return newMatchedMap[categories[0]] || null;
   };
 
-  const addWorkerByLabourNumber = (labourNo: string) => {
+  const addWorkerByLabourNumber = (labourNo: string, targetAgreementId?: string) => {
     const cleaned = labourNo.trim().toUpperCase();
     const found = MOCK_WORKERS.find(
       (w) => w.labourNumber && w.labourNumber.toUpperCase() === cleaned
@@ -412,18 +504,6 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       return {
         success: false,
         message: `Worker with Labour Number "${cleaned}" was not found. Try RZG-419032 or RZG-620194.`,
-      };
-    }
-
-    // Check if already added
-    const alreadyAdded =
-      matchedWorker?.id === found.id ||
-      additionalWorkers.some((w) => w.workerId === found.id);
-
-    if (alreadyAdded) {
-      return {
-        success: false,
-        message: `${found.name} is already included in this work booking.`,
       };
     }
 
@@ -437,16 +517,19 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     setAdditionalWorkers((prev) => [...prev, newItem]);
 
-    if (activeAgreement) {
-      setActiveAgreement((prev) => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          workers: [...prev.workers, newItem],
-          workersCount: prev.workers.length + 1,
-        };
-      });
-    }
+    setActiveAgreements((prev) =>
+      prev.map((agr) => {
+        if (!targetAgreementId || agr.id === targetAgreementId || agr.status === 'matching') {
+          if (agr.workers.some((w) => w.workerId === found.id)) return agr;
+          return {
+            ...agr,
+            workers: [...agr.workers, newItem],
+            workersCount: agr.workers.length + 1,
+          };
+        }
+        return agr;
+      })
+    );
 
     return {
       success: true,
@@ -455,12 +538,9 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     };
   };
 
-  const addRecommendedWorker = (): boolean => {
-    // Pick another worker not yet in list
+  const addRecommendedWorker = (targetAgreementId?: string): boolean => {
     const candidate = MOCK_WORKERS.find(
-      (w) =>
-        w.id !== matchedWorker?.id &&
-        !additionalWorkers.some((item) => item.workerId === w.id)
+      (w) => !additionalWorkers.some((item) => item.workerId === w.id)
     );
 
     if (!candidate) return false;
@@ -475,48 +555,90 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     setAdditionalWorkers((prev) => [...prev, newItem]);
 
-    if (activeAgreement) {
-      setActiveAgreement((prev) => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          workers: [...prev.workers, newItem],
-          workersCount: prev.workers.length + 1,
-        };
-      });
-    }
+    setActiveAgreements((prev) =>
+      prev.map((agr) => {
+        if (!targetAgreementId || agr.id === targetAgreementId || agr.status === 'matching') {
+          return {
+            ...agr,
+            workers: [...agr.workers, newItem],
+            workersCount: agr.workers.length + 1,
+          };
+        }
+        return agr;
+      })
+    );
 
     return true;
   };
 
-  const removeWorkerFromBooking = (workerId: string) => {
+  const removeWorkerFromBooking = (workerId: string, targetAgreementId?: string) => {
     setAdditionalWorkers((prev) => prev.filter((w) => w.workerId !== workerId));
-    if (activeAgreement) {
-      setActiveAgreement((prev) => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          workers: prev.workers.filter((w) => w.workerId !== workerId),
-          workersCount: Math.max(1, prev.workers.length - 1),
-        };
-      });
-    }
+    setActiveAgreements((prev) =>
+      prev.map((agr) => {
+        if (!targetAgreementId || agr.id === targetAgreementId) {
+          return {
+            ...agr,
+            workers: agr.workers.filter((w) => w.workerId !== workerId),
+            workersCount: Math.max(1, agr.workers.length - 1),
+          };
+        }
+        return agr;
+      })
+    );
   };
 
   const confirmAgreementDetails = (params: {
+    agreementId?: string;
     agreedWage: number;
     date: string;
     time: string;
   }): BookingAgreement => {
-    const updated: BookingAgreement = {
-      ...(activeAgreement || INITIAL_ACTIVE_BOOKING),
-      agreedWage: params.agreedWage,
-      date: params.date,
-      time: params.time,
-      status: 'awaiting_confirmation',
-    };
-    setActiveAgreement(updated);
-    return updated;
+    let updatedAgreement: BookingAgreement | null = null;
+
+    setActiveAgreements((prev) => {
+      return prev.map((agr) => {
+        if (!params.agreementId || agr.id === params.agreementId || (prev.length === 1 && agr.status === 'matching')) {
+          const updated: BookingAgreement = {
+            ...agr,
+            agreedWage: params.agreedWage,
+            date: params.date,
+            time: params.time,
+            status: 'awaiting_confirmation',
+          };
+          if (!updatedAgreement) updatedAgreement = updated;
+          return updated;
+        }
+        return agr;
+      });
+    });
+
+    return updatedAgreement || activeAgreements[0] || INITIAL_ACTIVE_BOOKINGS[0];
+  };
+
+  const confirmAllPendingAgreements = (
+    agreedWages: Record<string, number>,
+    date: string,
+    time: string
+  ): BookingAgreement[] => {
+    const updatedList: BookingAgreement[] = [];
+    setActiveAgreements((prev) =>
+      prev.map((agr) => {
+        if (agr.status === 'matching') {
+          const wage = agreedWages[agr.serviceCategory] || agreedWages[agr.id] || agr.agreedWage || 1500;
+          const updated: BookingAgreement = {
+            ...agr,
+            agreedWage: wage,
+            date,
+            time,
+            status: 'awaiting_confirmation',
+          };
+          updatedList.push(updated);
+          return updated;
+        }
+        return agr;
+      })
+    );
+    return updatedList;
   };
 
   const selectJobAsActiveAgreement = (
@@ -538,9 +660,9 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       workers: [
         {
           workerId: 'w1',
-          name: 'Amit Kumar',
-          labourNumber: 'RZG-849201',
-          phone: '+91 98712 34567',
+          name: 'Ramesh Kumar',
+          labourNumber: 'RZG-104582',
+          phone: '+91 98765 43210',
           avatar:
             'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=160&auto=format&fit=crop&q=80',
         },
@@ -552,84 +674,83 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       status: 'awaiting_confirmation',
       createdAt: 'Just now',
     };
-    setActiveAgreement(newAgreement);
+
+    setActiveAgreements((prev) => [newAgreement, ...prev]);
     return newAgreement;
   };
 
-  const workerConfirmBooking = (_agreementId: string, accept: boolean) => {
-    if (!activeAgreement) return;
-    if (accept) {
-      setActiveAgreement((prev) => (prev ? { ...prev, status: 'confirmed' } : null));
-    } else {
-      setActiveAgreement((prev) =>
-        prev
-          ? {
-              ...prev,
-              status: 'rejected',
-              rejectedBy: 'worker',
-              rejectionReason: 'Declined by worker',
-            }
-          : null
-      );
-    }
-  };
-
-  const employerRejectBooking = (reason?: string) => {
-    if (!activeAgreement) return;
-    setActiveAgreement((prev) =>
-      prev
-        ? {
-            ...prev,
-            status: 'rejected',
-            rejectedBy: 'employer',
-            rejectionReason: reason || 'Declined by employer',
+  const workerConfirmBooking = (agreementId: string, accept: boolean) => {
+    setActiveAgreements((prev) =>
+      prev.map((agr) => {
+        if (agr.id === agreementId || !agreementId) {
+          if (accept) {
+            return { ...agr, status: 'confirmed' as BookingStatus };
           }
-        : null
+          return {
+            ...agr,
+            status: 'rejected' as BookingStatus,
+            rejectedBy: 'worker',
+            rejectionReason: 'Declined by worker',
+          };
+        }
+        return agr;
+      })
     );
   };
 
-  const switchMatchedWorker = (nextWorkerId?: string): WorkerProfile | null => {
-    const currentId = nextWorkerId || matchedWorker?.id;
-    const category = activeAgreement?.serviceCategory || 'plumber';
+  const employerRejectBooking = (reason?: string, agreementId?: string) => {
+    setActiveAgreements((prev) =>
+      prev.filter((agr) => {
+        if (agreementId) {
+          return agr.id !== agreementId;
+        }
+        return agr.status !== 'matching' && agr.status !== 'awaiting_confirmation';
+      })
+    );
+  };
+
+  const switchMatchedWorker = (nextWorkerId?: string, tradeCategory?: string): WorkerProfile | null => {
+    const category = tradeCategory || requestedCategories[0] || 'plumber';
+    const currentWorker = matchedWorkersByTrade[category] || matchedWorker;
+    const currentId = nextWorkerId || currentWorker?.id;
+
     const sameTradeWorkers = MOCK_WORKERS.filter((w) => w.primarySkill === category);
     const pool = sameTradeWorkers.length > 1 ? sameTradeWorkers : MOCK_WORKERS;
     const nextWorker = pool.find((w) => w.id !== currentId) || pool[0];
 
     if (!nextWorker) return null;
 
-    setMatchedWorker(nextWorker);
-    setAdditionalWorkers([]);
+    setMatchedWorkersByTrade((prev) => ({ ...prev, [category]: nextWorker }));
 
-    if (activeAgreement) {
-      setActiveAgreement((prev) => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          status: 'matching',
-          rejectionReason: undefined,
-          rejectedBy: undefined,
-          workers: [
-            {
-              workerId: nextWorker.id,
-              name: nextWorker.name,
-              labourNumber: nextWorker.labourNumber,
-              phone: nextWorker.phone,
-              avatar: nextWorker.avatar,
-            },
-          ],
-          workersCount: 1,
-        };
-      });
-    }
+    setActiveAgreements((prev) =>
+      prev.map((agr) => {
+        if (agr.serviceCategory === category && agr.status === 'matching') {
+          return {
+            ...agr,
+            workers: [
+              {
+                workerId: nextWorker.id,
+                name: nextWorker.name,
+                labourNumber: nextWorker.labourNumber,
+                phone: nextWorker.phone,
+                avatar: nextWorker.avatar,
+              },
+            ],
+          };
+        }
+        return agr;
+      })
+    );
 
     return nextWorker;
   };
 
   const rejectWorkerAndShowNext = (
-    reason?: string
+    reason?: string,
+    tradeCategory?: string
   ): { nextWorker: WorkerProfile | null; noMoreWorkers: boolean } => {
-    const currentWorker = matchedWorker;
-    const category = activeAgreement?.serviceCategory || currentWorker?.primarySkill || 'plumber';
+    const category = tradeCategory || requestedCategories[0] || 'plumber';
+    const currentWorker = matchedWorkersByTrade[category] || matchedWorker;
     const currentId = currentWorker?.id;
 
     const newRejected = currentId
@@ -644,14 +765,12 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       });
     }
 
-    // Find next available worker in this specific trade who has not been rejected yet
     const sameTradeWorkers = MOCK_WORKERS.filter((w) => w.primarySkill === category);
     let nextCandidate: WorkerProfile | null =
       sameTradeWorkers.find((w) => !newRejected.includes(w.id)) || null;
     let noMoreWorkers = false;
 
     if (!nextCandidate) {
-      // If all workers in this trade were rejected in current session, pick the other available worker
       nextCandidate =
         sameTradeWorkers.find((w) => w.id !== currentId) ||
         MOCK_WORKERS.find((w) => !newRejected.includes(w.id)) ||
@@ -661,39 +780,38 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
 
     if (nextCandidate) {
-      setMatchedWorker(nextCandidate);
-      setAdditionalWorkers([]);
+      setMatchedWorkersByTrade((prev) => ({ ...prev, [category]: nextCandidate! }));
 
-      if (activeAgreement) {
-        setActiveAgreement((prev) => {
-          if (!prev) return null;
-          return {
-            ...prev,
-            status: 'matching',
-            rejectionReason: undefined,
-            rejectedBy: undefined,
-            workers: [
-              {
-                workerId: nextCandidate!.id,
-                name: nextCandidate!.name,
-                labourNumber: nextCandidate!.labourNumber,
-                phone: nextCandidate!.phone,
-                avatar: nextCandidate!.avatar,
-              },
-            ],
-            workersCount: 1,
-          };
-        });
-      }
+      setActiveAgreements((prev) =>
+        prev.map((agr) => {
+          if (agr.serviceCategory === category && agr.status === 'matching') {
+            return {
+              ...agr,
+              workers: [
+                {
+                  workerId: nextCandidate!.id,
+                  name: nextCandidate!.name,
+                  labourNumber: nextCandidate!.labourNumber,
+                  phone: nextCandidate!.phone,
+                  avatar: nextCandidate!.avatar,
+                },
+              ],
+            };
+          }
+          return agr;
+        })
+      );
     }
 
     return { nextWorker: nextCandidate, noMoreWorkers };
   };
 
-  const markWorkCompleted = (_agreementId: string) => {
-    if (!activeAgreement) return;
+  const markWorkCompleted = (agreementId: string) => {
+    const targetAgreement = activeAgreements.find((a) => a.id === agreementId) || activeAgreements[0];
+    if (!targetAgreement) return;
+
     const completed: BookingAgreement = {
-      ...activeAgreement,
+      ...targetAgreement,
       status: 'completed',
       completedAt: new Date().toLocaleDateString('en-GB', {
         day: 'numeric',
@@ -701,19 +819,20 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
         year: 'numeric',
       }),
     };
-    setActiveAgreement(completed);
+
+    setActiveAgreements((prev) => prev.filter((a) => a.id !== targetAgreement.id));
     setCompletedAgreements((prev) => [completed, ...prev]);
   };
 
   const submitReview = (
-    _agreementId: string,
+    agreementId: string,
     rating: number,
     comment: string,
     tags?: string[]
   ) => {
-    if (activeAgreement) {
-      setActiveAgreement((prev) => (prev ? { ...prev, ratingGiven: true } : null));
-    }
+    const target =
+      completedAgreements.find((a) => a.id === agreementId) ||
+      activeAgreements.find((a) => a.id === agreementId);
 
     const newReview: Review = {
       id: `rev-${Date.now()}`,
@@ -722,14 +841,16 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       rating,
       comment,
       date: 'Today',
-      jobTitle: activeAgreement?.workTitle || 'Completed Work',
+      jobTitle: target?.workTitle || 'Completed Work',
       tags,
     };
 
-    // Append review to first worker
-    if (MOCK_WORKERS[0]) {
-      MOCK_WORKERS[0].reviews = [newReview, ...MOCK_WORKERS[0].reviews];
-      MOCK_WORKERS[0].completedJobsCount += 1;
+    if (target?.workers[0]) {
+      const workerMatch = MOCK_WORKERS.find((w) => w.id === target.workers[0].workerId);
+      if (workerMatch) {
+        workerMatch.reviews = [newReview, ...workerMatch.reviews];
+        workerMatch.completedJobsCount += 1;
+      }
     }
   };
 
@@ -742,15 +863,18 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const resetDemoBooking = () => {
-    setActiveAgreement(INITIAL_ACTIVE_BOOKING);
+    setActiveAgreements(INITIAL_ACTIVE_BOOKINGS);
   };
 
   return (
     <BookingContext.Provider
       value={{
+        activeAgreements,
         activeAgreement,
         completedAgreements,
         matchedWorker,
+        matchedWorkersByTrade,
+        requestedCategories,
         additionalWorkers,
         currentJobIndex,
         currentJob,
@@ -760,6 +884,7 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
         addRecommendedWorker,
         removeWorkerFromBooking,
         confirmAgreementDetails,
+        confirmAllPendingAgreements,
         selectJobAsActiveAgreement,
         workerConfirmBooking,
         employerRejectBooking,
@@ -785,4 +910,3 @@ export const useBooking = (): BookingContextType => {
   }
   return context;
 };
-

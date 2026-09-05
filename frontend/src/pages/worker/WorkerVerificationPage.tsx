@@ -1263,7 +1263,7 @@ export const WorkerVerificationPage: React.FC = () => {
               <div className="space-y-1.5">
                 <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 font-black text-xs uppercase tracking-wider border border-amber-300 dark:border-amber-700">
                   <Clock className="w-3.5 h-3.5" />
-                  <span>🟡 Verification in Progress</span>
+                  <span>Verification in Progress</span>
                 </div>
                 <h2 className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white">
                   Verification Application Submitted
@@ -1316,10 +1316,10 @@ export const WorkerVerificationPage: React.FC = () => {
                 <Button
                   variant="outline"
                   size="lg"
-                  onClick={() => navigate('/admin/verification')}
-                  className="text-xs font-bold text-neutral-700"
+                  onClick={() => navigate('/worker/profile')}
+                  className="text-xs font-bold"
                 >
-                  Open Admin Review Console (Demo) →
+                  View Profile & Trust Badge
                 </Button>
               </div>
 

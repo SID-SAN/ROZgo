@@ -47,7 +47,7 @@ export const kn = {
     switchMode: 'ಬದಲಾಯಿಸಿ',
   },
   landing: {
-    heroBadge: '🤝 ಕಾರ್ಮಿಕರ ಸ್ವಂತ ಸಹಕಾರಿ ವೇದಿಕೆ',
+    heroBadge: 'ಕಾರ್ಮಿಕರ ಸ್ವಂತ ಸಹಕಾರಿ ವೇದಿಕೆ',
     heroLine1: 'ಕೆಲಸ ಪಡೆಯಿರಿ.',
     heroLine2: 'ನಂಬಿಕಸ್ಥ ಕಾರ್ಮಿಕರನ್ನು ಪಡೆಯಿರಿ.',
     heroLine3: 'ಒಟ್ಟಾಗಿ ಬೆಳೆಯಿರಿ.',

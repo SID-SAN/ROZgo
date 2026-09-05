@@ -27,6 +27,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { LabourBadge } from '../../components/workers/LabourBadge';
+import { authApi } from '../../api/authApi';
 import logoImg from '../../assets/logo.png';
 
 // Sub-skills lookup mapping for specific trades
@@ -179,6 +180,9 @@ export const WorkerOnboardingPage: React.FC = () => {
   const [isOtpSent, setIsOtpSent] = useState(false);
   const [isOtpVerified, setIsOtpVerified] = useState(false);
   const [otpCountdown, setOtpCountdown] = useState(0);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [otpFeedback, setOtpFeedback] = useState<string | null>(null);
   const [dobOrAge, setDobOrAge] = useState('');
   const [gender, setGender] = useState<'Male' | 'Female' | 'Other' | 'Prefer not to say'>('Male');
   const [preferredLang, setPreferredLang] = useState(language);
@@ -240,25 +244,43 @@ export const WorkerOnboardingPage: React.FC = () => {
     return () => clearInterval(timer);
   }, [isOtpSent, otpCountdown]);
 
-  const handleSendOtp = () => {
+  const handleSendOtp = async () => {
     if (phone.length !== 10) {
       setFormError('Please enter a valid 10-digit mobile number first.');
       return;
     }
     setFormError(null);
-    setIsOtpSent(true);
-    setOtpCountdown(30);
-    // Realistic simulation: auto-fill demo OTP 4829
-    setOtp('4829');
-    setIsOtpVerified(true);
+    setOtpFeedback(null);
+    setIsSendingOtp(true);
+    try {
+      const res = await authApi.sendOtp(phone);
+      setIsOtpSent(true);
+      setOtpCountdown(30);
+      setOtp('');
+      setIsOtpVerified(false);
+      setOtpFeedback(res.message + (res.demo_otp ? ` (Test OTP: ${res.demo_otp})` : ''));
+    } catch (err: any) {
+      setFormError(err.message || 'Failed to send OTP. Please try again.');
+    } finally {
+      setIsSendingOtp(false);
+    }
   };
 
-  const handleVerifyOtp = () => {
-    if (otp.trim().length >= 4) {
+  const handleVerifyOtp = async () => {
+    if (otp.trim().length < 4) {
+      setFormError('Please enter the 4 to 6-digit OTP sent to your phone.');
+      return;
+    }
+    setFormError(null);
+    setIsVerifyingOtp(true);
+    try {
+      await authApi.verifyOtp(phone, otp, 'worker');
       setIsOtpVerified(true);
-      setFormError(null);
-    } else {
-      setFormError('Please enter the 4-digit OTP sent to your phone.');
+      setOtpFeedback('Mobile number verified successfully! ✓');
+    } catch (err: any) {
+      setFormError(err.message || 'Invalid OTP entered. Please try again (Demo OTP: 123456).');
+    } finally {
+      setIsVerifyingOtp(false);
     }
   };
 
@@ -564,15 +586,17 @@ export const WorkerOnboardingPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleSendOtp}
-                    disabled={phone.length !== 10 || (isOtpSent && otpCountdown > 0)}
-                    className="px-5 py-3 rounded-2xl bg-rozgo-900 text-white font-bold text-sm shadow-soft disabled:opacity-50 disabled:cursor-not-allowed hover:bg-rozgo-800 transition-all flex items-center justify-center gap-2 whitespace-nowrap"
+                    disabled={phone.length !== 10 || isSendingOtp || (isOtpSent && otpCountdown > 0)}
+                    className="px-5 py-3 rounded-2xl bg-rozgo-900 text-white font-bold text-sm shadow-soft disabled:opacity-50 disabled:cursor-not-allowed hover:bg-rozgo-800 transition-all flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer"
                   >
                     <KeyRound className="w-4 h-4" />
-                    {isOtpVerified
+                    {isSendingOtp
+                      ? 'Sending...'
+                      : isOtpVerified
                       ? 'Verified ✓'
                       : isOtpSent
                       ? otpCountdown > 0
-                        ? `Resend in ${otpCountdown}s`
+                        ? `Resend (${otpCountdown}s)`
                         : 'Resend OTP'
                       : 'Send OTP'}
                   </button>
@@ -585,28 +609,32 @@ export const WorkerOnboardingPage: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-bold uppercase tracking-wider text-rozgo-900 dark:text-rozgo-300 flex items-center gap-2">
                       <KeyRound className="w-4 h-4" />
-                      <span>Enter 4-Digit OTP <span className="text-rozgo-700">*</span></span>
+                      <span>Enter 4 to 6-Digit OTP <span className="text-rozgo-700">*</span></span>
                     </label>
-                    <span className="text-xs text-neutral-500 font-medium">
-                      Demo OTP auto-filled: <strong>4829</strong>
-                    </span>
+                    {otpFeedback && (
+                      <span className="text-xs text-neutral-600 dark:text-neutral-300 font-medium">
+                        {otpFeedback}
+                      </span>
+                    )}
                   </div>
 
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
                     <input
                       type="text"
                       maxLength={6}
                       value={otp}
                       onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                      placeholder="4829"
+                      placeholder="123456"
                       className="w-44 px-4 py-2.5 rounded-xl bg-white dark:bg-darkbg-base border border-rozgo-300 dark:border-rozgo-700 text-neutral-900 dark:text-white font-mono font-black text-lg tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-rozgo-900"
                     />
                     <Button
+                      type="button"
                       variant={isOtpVerified ? 'outline' : 'primary'}
                       size="sm"
                       onClick={handleVerifyOtp}
+                      disabled={otp.length < 4 || isVerifyingOtp || isOtpVerified}
                     >
-                      {isOtpVerified ? 'OTP Verified ✓' : 'Verify'}
+                      {isVerifyingOtp ? 'Verifying...' : isOtpVerified ? 'OTP Verified ✓' : 'Verify OTP'}
                     </Button>
                     {isOtpVerified && (
                       <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">

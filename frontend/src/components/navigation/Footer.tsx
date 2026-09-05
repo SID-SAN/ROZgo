@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { ShieldCheck, HeartHandshake, PhoneCall, ArrowUpRight } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { useAuth } from '../../context/AuthContext';
@@ -9,6 +9,7 @@ export const Footer: React.FC = () => {
   const { t } = useLanguage();
   const { isLoggedIn, role } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const handleLogoClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -21,10 +22,31 @@ export const Footer: React.FC = () => {
     window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
   };
 
+  const handleSupportLinkClick = (anchorId: string) => {
+    if (location.pathname === '/support') {
+      const el = document.getElementById(anchorId);
+      if (el) {
+        const headerOffset = 90;
+        const elementPosition = el.getBoundingClientRect().top;
+        const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+        window.scrollTo({
+          top: offsetPosition,
+          behavior: 'smooth',
+        });
+        window.history.pushState(null, '', `/support#${anchorId}`);
+      }
+    } else {
+      navigate(`/support#${anchorId}`);
+    }
+  };
+
+  const showServices = !(isLoggedIn && role === 'worker');
+  const showGetLabourId = !(isLoggedIn && role === 'employer');
+
   return (
     <footer className="bg-rozgo-900 text-white mt-auto border-t border-rozgo-800 transition-colors">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-10 lg:gap-8 pb-12 border-b border-rozgo-800/80">
+        <div className={`grid grid-cols-1 md:grid-cols-2 ${showServices ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-10 lg:gap-8 pb-12 border-b border-rozgo-800/80`}>
           {/* Brand Col (2 spans) */}
           <div className="lg:col-span-2 space-y-4">
             <button
@@ -58,45 +80,65 @@ export const Footer: React.FC = () => {
             </div>
           </div>
 
-          {/* Col 1: Services */}
-          <div className="space-y-3">
-            <h4 className="text-sm font-bold uppercase tracking-wider text-rozgo-200">
-              {t('landing.footerColServices')}
-            </h4>
-            <ul className="space-y-2.5 text-sm text-rozgo-100/80">
-              <li>
-                <Link to="/employer?service=plumber" className="hover:text-white transition-colors">
-                  {t('services.plumber')}
-                </Link>
-              </li>
-              <li>
-                <Link to="/employer?service=electrician" className="hover:text-white transition-colors">
-                  {t('services.electrician')}
-                </Link>
-              </li>
-              <li>
-                <Link to="/employer?service=carpenter" className="hover:text-white transition-colors">
-                  {t('services.carpenter')}
-                </Link>
-              </li>
-              <li>
-                <Link to="/employer?service=domestic_help" className="hover:text-white transition-colors">
-                  {t('services.domesticHelp')}
-                </Link>
-              </li>
-              <li>
-                <Link to="/employer?service=painter" className="hover:text-white transition-colors">
-                  {t('services.painter')}
-                </Link>
-              </li>
-              <li>
-                <Link to="/employer" className="inline-flex items-center gap-1 text-rozgo-300 font-bold hover:underline pt-1">
-                  <span>{t('landing.viewAllServices')}</span>
-                  <ArrowUpRight className="w-3.5 h-3.5" />
-                </Link>
-              </li>
-            </ul>
-          </div>
+          {/* Col 1: Services (Hidden for logged-in workers) */}
+          {showServices && (
+            <div className="space-y-3">
+              <h4 className="text-sm font-bold uppercase tracking-wider text-rozgo-200">
+                {t('landing.footerColServices')}
+              </h4>
+              <ul className="space-y-2.5 text-sm text-rozgo-100/80">
+                <li>
+                  <Link
+                    to={isLoggedIn && role === 'employer' ? '/employer?service=plumber' : '/auth/login?role=employer&service=plumber'}
+                    className="hover:text-white transition-colors"
+                  >
+                    {t('services.plumber')}
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    to={isLoggedIn && role === 'employer' ? '/employer?service=electrician' : '/auth/login?role=employer&service=electrician'}
+                    className="hover:text-white transition-colors"
+                  >
+                    {t('services.electrician')}
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    to={isLoggedIn && role === 'employer' ? '/employer?service=carpenter' : '/auth/login?role=employer&service=carpenter'}
+                    className="hover:text-white transition-colors"
+                  >
+                    {t('services.carpenter')}
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    to={isLoggedIn && role === 'employer' ? '/employer?service=domestic_help' : '/auth/login?role=employer&service=domestic_help'}
+                    className="hover:text-white transition-colors"
+                  >
+                    {t('services.domesticHelp')}
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    to={isLoggedIn && role === 'employer' ? '/employer?service=painter' : '/auth/login?role=employer&service=painter'}
+                    className="hover:text-white transition-colors"
+                  >
+                    {t('services.painter')}
+                  </Link>
+                </li>
+                <li>
+                  <Link
+                    to={isLoggedIn && role === 'employer' ? '/employer' : '/auth/login?role=employer'}
+                    className="inline-flex items-center gap-1 text-rozgo-300 font-bold hover:underline pt-1"
+                  >
+                    <span>{t('landing.viewAllServices')}</span>
+                    <ArrowUpRight className="w-3.5 h-3.5" />
+                  </Link>
+                </li>
+              </ul>
+            </div>
+          )}
 
           {/* Col 2: Cooperative */}
           <div className="space-y-3">
@@ -109,26 +151,13 @@ export const Footer: React.FC = () => {
                   How ROZGO Works
                 </Link>
               </li>
-              <li>
-                <Link to="/about" className="hover:text-white transition-colors">
-                  Worker Benefits
-                </Link>
-              </li>
-              <li>
-                <Link to="/about" className="hover:text-white transition-colors">
-                  Governance & Rights
-                </Link>
-              </li>
-              <li>
-                <Link to="/about" className="hover:text-white transition-colors">
-                  Transparency Charter
-                </Link>
-              </li>
-              <li>
-                <Link to="/auth/onboarding" className="hover:text-white transition-colors">
-                  Get Labour Number
-                </Link>
-              </li>
+              {showGetLabourId && (
+                <li>
+                  <Link to="/auth/onboarding" className="hover:text-white transition-colors">
+                    Get Labour Number
+                  </Link>
+                </li>
+              )}
             </ul>
           </div>
 
@@ -139,16 +168,31 @@ export const Footer: React.FC = () => {
             </h4>
             <ul className="space-y-2.5 text-sm text-rozgo-100/80">
               <li>
-                <span className="hover:text-white cursor-pointer">Help Center & FAQs</span>
+                <button
+                  type="button"
+                  onClick={() => handleSupportLinkClick('faq')}
+                  className="hover:text-white transition-colors text-left cursor-pointer"
+                >
+                  Help Center & FAQs
+                </button>
               </li>
               <li>
-                <span className="hover:text-white cursor-pointer">Worker Grievance Redressal</span>
+                <button
+                  type="button"
+                  onClick={() => handleSupportLinkClick('community-standards')}
+                  className="hover:text-white transition-colors text-left cursor-pointer"
+                >
+                  Community Standards
+                </button>
               </li>
               <li>
-                <span className="hover:text-white cursor-pointer">Community Standards</span>
-              </li>
-              <li>
-                <span className="hover:text-white cursor-pointer">Terms of Service</span>
+                <button
+                  type="button"
+                  onClick={() => handleSupportLinkClick('terms')}
+                  className="hover:text-white transition-colors text-left cursor-pointer"
+                >
+                  Terms of Service
+                </button>
               </li>
               <li className="pt-2">
                 <a

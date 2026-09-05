@@ -27,7 +27,6 @@ import { MOCK_JOBS } from '../../data/mockJobs';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
-import { CallModal } from '../../components/common/CallModal';
 import { BookingAgreementModal } from '../../components/bookings/BookingAgreementModal';
 import { WaitingForAgreementModal } from '../../components/bookings/WaitingForAgreementModal';
 import { JobRecommendation } from '../../types';
@@ -46,7 +45,6 @@ export const FindWorkPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [isSearchingNext, setIsSearchingNext] = useState<boolean>(false);
-  const [selectedJobForCall, setSelectedJobForCall] = useState<JobRecommendation | null>(null);
   const [isWaitingAgreement, setIsWaitingAgreement] = useState(false);
   const [pendingAgreedJob, setPendingAgreedJob] = useState<JobRecommendation | null>(null);
   const [isAgreementOpen, setIsAgreementOpen] = useState(false);
@@ -104,16 +102,9 @@ export const FindWorkPage: React.FC = () => {
   };
 
   const handleSelectJob = (job: JobRecommendation) => {
-    setSelectedJobForCall(job);
-  };
-
-  const handleCallAgreed = () => {
-    if (!selectedJobForCall) return;
-    const agreedJob = selectedJobForCall;
-    setPendingAgreedJob(agreedJob);
-    setSelectedJobForCall(null);
-    selectJobAsActiveAgreement(agreedJob, 1200);
-    // Show waiting for agreement details by employer modal
+    setPendingAgreedJob(job);
+    const phone = job.employerPhone.replace(/[^0-9+]/g, '') || job.employerPhone;
+    window.location.href = `tel:${phone}`;
     setIsWaitingAgreement(true);
   };
 
@@ -134,8 +125,8 @@ export const FindWorkPage: React.FC = () => {
   };
 
   const handleDirectAcceptWork = (job: JobRecommendation) => {
-    selectJobAsActiveAgreement(job, 1200);
-    setIsAgreementOpen(true);
+    setPendingAgreedJob(job);
+    setIsWaitingAgreement(true);
   };
 
   const handleConfirmBooking = () => {
@@ -565,18 +556,6 @@ export const FindWorkPage: React.FC = () => {
         </Card>
       )}
 
-      {/* Simulated Phone Call Dialog */}
-      {selectedJobForCall && (
-        <CallModal
-          isOpen={!!selectedJobForCall}
-          onClose={() => setSelectedJobForCall(null)}
-          onCallAgreed={handleCallAgreed}
-          calleeName={selectedJobForCall.employerName}
-          calleePhone={selectedJobForCall.employerPhone}
-          roleType="worker"
-          serviceTitle={selectedJobForCall.subcategory}
-        />
-      )}
 
       {/* Waiting for Agreement Details by Employer Dialog */}
       {pendingAgreedJob && (

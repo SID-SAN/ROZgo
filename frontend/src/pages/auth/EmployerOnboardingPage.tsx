@@ -29,6 +29,7 @@ import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { EmployerType, WorkLocationItem } from '../../types';
+import { authApi } from '../../api/authApi';
 import logoImg from '../../assets/logo.png';
 
 export const EmployerOnboardingPage: React.FC = () => {
@@ -98,6 +99,11 @@ export const EmployerOnboardingPage: React.FC = () => {
   const [generatedEmployerId, setGeneratedEmployerId] = useState<string>('');
   const [copiedId, setCopiedId] = useState(false);
 
+  // OTP State & Timers
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+  const [otpFeedback, setOtpFeedback] = useState<string | null>(null);
+
   // OTP Countdown timer
   useEffect(() => {
     let timer: any;
@@ -109,25 +115,43 @@ export const EmployerOnboardingPage: React.FC = () => {
     return () => clearInterval(timer);
   }, [isOtpSent, otpCountdown]);
 
-  const handleSendOtp = () => {
+  const handleSendOtp = async () => {
     if (phone.length !== 10) {
       setFormError('Please enter a valid 10-digit mobile number first.');
       return;
     }
     setFormError(null);
-    setIsOtpSent(true);
-    setOtpCountdown(30);
-    // Simulation: auto-fill demo OTP 5821
-    setOtp('5821');
-    setIsOtpVerified(true);
+    setOtpFeedback(null);
+    setIsSendingOtp(true);
+    try {
+      const res = await authApi.sendOtp(phone);
+      setIsOtpSent(true);
+      setOtpCountdown(30);
+      setOtp('');
+      setIsOtpVerified(false);
+      setOtpFeedback(res.message + (res.demo_otp ? ` (Test OTP: ${res.demo_otp})` : ''));
+    } catch (err: any) {
+      setFormError(err.message || 'Failed to send OTP. Please try again.');
+    } finally {
+      setIsSendingOtp(false);
+    }
   };
 
-  const handleVerifyOtp = () => {
-    if (otp.trim().length >= 4) {
+  const handleVerifyOtp = async () => {
+    if (otp.trim().length < 4) {
+      setFormError('Please enter the 4 to 6-digit OTP sent to your phone.');
+      return;
+    }
+    setFormError(null);
+    setIsVerifyingOtp(true);
+    try {
+      await authApi.verifyOtp(phone, otp, 'employer');
       setIsOtpVerified(true);
-      setFormError(null);
-    } else {
-      setFormError('Please enter the 4-digit OTP sent to your phone.');
+      setOtpFeedback('Mobile number verified successfully! ✓');
+    } catch (err: any) {
+      setFormError(err.message || 'Invalid OTP entered. Please try again (Demo OTP: 123456).');
+    } finally {
+      setIsVerifyingOtp(false);
     }
   };
 
@@ -578,9 +602,13 @@ export const EmployerOnboardingPage: React.FC = () => {
                     variant={isOtpSent ? 'outline' : 'primary'}
                     size="md"
                     onClick={handleSendOtp}
-                    disabled={phone.length !== 10}
+                    disabled={phone.length !== 10 || isSendingOtp || (isOtpSent && otpCountdown > 0)}
                   >
-                    {isOtpSent ? (otpCountdown > 0 ? `Resend (${otpCountdown}s)` : 'Resend OTP') : 'Send OTP'}
+                    {isSendingOtp
+                      ? 'Sending...'
+                      : isOtpSent
+                      ? (otpCountdown > 0 ? `Resend (${otpCountdown}s)` : 'Resend OTP')
+                      : 'Send OTP'}
                   </Button>
                 )}
               </div>
@@ -592,21 +620,31 @@ export const EmployerOnboardingPage: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-rozgo-900 dark:text-rozgo-300 flex items-center gap-1.5">
                     <KeyRound className="w-4 h-4" />
-                    Enter 4-digit OTP sent to +91 {phone}
+                    Enter 4 to 6-Digit OTP sent to +91 {phone}
                   </span>
-                  <span className="text-[11px] font-semibold text-neutral-500">Demo Code: 5821</span>
+                  {otpFeedback && (
+                    <span className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">
+                      {otpFeedback}
+                    </span>
+                  )}
                 </div>
                 <div className="flex gap-2">
                   <input
                     type="text"
                     maxLength={6}
                     value={otp}
-                    onChange={(e) => setOtp(e.target.value)}
-                    placeholder="Enter 4-digit OTP"
-                    className="flex-1 px-4 py-2.5 rounded-xl border border-neutral-300 dark:border-darkbg-border font-mono font-bold tracking-widest text-center text-lg"
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                    placeholder="123456"
+                    className="flex-1 px-4 py-2.5 rounded-xl border border-neutral-300 dark:border-darkbg-border font-mono font-bold tracking-widest text-center text-lg bg-white dark:bg-darkbg-base"
                   />
-                  <Button variant="primary" size="md" onClick={handleVerifyOtp}>
-                    Verify OTP
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="md"
+                    onClick={handleVerifyOtp}
+                    disabled={otp.length < 4 || isVerifyingOtp}
+                  >
+                    {isVerifyingOtp ? 'Verifying...' : 'Verify OTP'}
                   </Button>
                 </div>
               </div>
@@ -922,200 +960,103 @@ export const EmployerOnboardingPage: React.FC = () => {
           </Card>
         )}
 
-        {/* STEP 5: Identity & Business Verification (Business verification explicitly marked Optional) */}
+        {/* STEP 5: Document Upload */}
         {currentStep === 5 && (
           <Card variant="elevated" padding="lg" className="space-y-6">
             <div>
               <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-black text-neutral-900 dark:text-white">Trust & Verification</h2>
-                <Badge variant={isIdVerified ? 'verified' : 'secondary'} size="md">
-                  {isIdVerified ? '✓ Verified Employer' : 'Optional / Instant'}
+                <h2 className="text-2xl font-black text-neutral-900 dark:text-white">Document Verification</h2>
+                <Badge variant={idDocFileName ? 'verified' : 'secondary'} size="md">
+                  {idDocFileName ? '✓ Document Uploaded' : 'Optional'}
                 </Badge>
               </div>
               <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-                Verified employers build greater trust with workers and receive 3x faster phone call responses.
+                Upload your ID or business proof document (Aadhaar, PAN, Voter ID, GSTIN, etc.) to get a verified badge.
               </p>
             </div>
 
-            {/* Trust Checklist Card */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="p-4 rounded-2xl bg-emerald-50/70 dark:bg-darkbg-surface border border-emerald-200 dark:border-emerald-900/40 flex items-center gap-3">
-                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                <div>
-                  <span className="font-bold text-xs text-neutral-900 dark:text-white block">Mobile Verified</span>
-                  <span className="text-[11px] text-neutral-500">+91 {phone} (✓ Verified via OTP)</span>
-                </div>
+            {/* Simple Upload Section */}
+            <div className="p-8 sm:p-10 rounded-2xl border-2 border-dashed border-neutral-300 dark:border-neutral-700 hover:border-rozgo-700 dark:hover:border-rozgo-500 transition-colors text-center space-y-4 bg-neutral-50/50 dark:bg-darkbg-card">
+              <input
+                type="file"
+                ref={idDocInputRef}
+                accept="image/*,.pdf"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setIdDocFileName(file.name);
+                    setIsIdVerified(true);
+                  }
+                }}
+                className="hidden"
+              />
+
+              <div className="w-16 h-16 rounded-full bg-rozgo-100 dark:bg-rozgo-950/60 text-rozgo-800 dark:text-rozgo-300 flex items-center justify-center mx-auto shadow-xs">
+                <Upload className="w-8 h-8" />
               </div>
 
-              <div className="p-4 rounded-2xl bg-rozgo-50/70 dark:bg-darkbg-surface border border-rozgo-200 dark:border-darkbg-border flex items-center gap-3">
-                <ShieldCheck className="w-5 h-5 text-rozgo-700 dark:text-rozgo-400 shrink-0" />
-                <div>
-                  <span className="font-bold text-xs text-neutral-900 dark:text-white block">Government ID Status</span>
-                  <span className="text-[11px] text-neutral-500">
-                    {isIdVerified ? '✓ ID Verified' : 'Complete below or do later'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* 1. Government ID Verification */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-darkbg-surface border border-neutral-200 dark:border-darkbg-border space-y-4">
-              <span className="text-xs font-bold uppercase tracking-wider text-rozgo-900 dark:text-rozgo-300">
-                1. Government ID Verification (Individual or Entity)
-              </span>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {[
-                  { id: 'aadhaar', label: 'Aadhaar Card' },
-                  { id: 'driving_license', label: 'Driving Licence' },
-                  { id: 'voter_id', label: 'Voter ID' },
-                  { id: 'pan', label: 'PAN Card' },
-                ].map((idOption) => (
-                  <button
-                    key={idOption.id}
-                    type="button"
-                    onClick={() => {
-                      setIdentityType(idOption.id as any);
-                      setIsIdVerified(false);
-                    }}
-                    className={`py-2 px-2.5 rounded-xl text-xs font-bold border text-center transition-all ${
-                      identityType === idOption.id
-                        ? 'border-rozgo-900 bg-rozgo-900 text-white'
-                        : 'border-neutral-200 dark:border-darkbg-border bg-neutral-50 dark:bg-darkbg-card text-neutral-700 dark:text-neutral-300'
-                    }`}
-                  >
-                    {idOption.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="space-y-2">
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
-                  {identityType === 'aadhaar' ? 'Aadhaar Number (Last 4 digits or full)' : 'Document ID Number'}
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={identityNumber}
-                    onChange={(e) => setIdentityNumber(e.target.value)}
-                    placeholder={identityType === 'aadhaar' ? 'XXXX XXXX 8192' : 'e.g. DL-04201100234'}
-                    className="flex-1 px-4 py-2.5 rounded-xl border border-neutral-300 dark:border-darkbg-border bg-white dark:bg-darkbg-surface text-rozgo-900 dark:text-rozgo-300 placeholder:text-neutral-400 font-mono font-bold text-sm tracking-wider focus:outline-hidden focus:ring-2 focus:ring-rozgo-900"
-                  />
-                  <Button
-                    variant={isIdVerified ? 'outline' : 'primary'}
-                    size="md"
-                    onClick={handleSimulateIdVerification}
-                  >
-                    {isIdVerified ? '✓ Verified' : 'Verify ID'}
-                  </Button>
-                </div>
-                {isIdVerified && identityType === 'aadhaar' && (
-                  <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1 pt-0.5">
-                    <span>✓ Aadhaar Verified:</span>
-                    <span className="font-mono text-rozgo-900 dark:text-rozgo-300 tracking-wider">
-                      XXXX XXXX {identityNumber.slice(-4) || '8192'}
-                    </span>
-                  </p>
-                )}
-              </div>
-
-              <div className="flex items-center justify-between text-xs text-neutral-500 pt-1">
-                <span>Upload document photo (optional):</span>
-                <button
-                  type="button"
-                  onClick={() => idDocInputRef.current?.click()}
-                  className="font-bold text-rozgo-900 dark:text-rozgo-300 hover:underline"
-                >
-                  {idDocFileName ? `✓ ${idDocFileName}` : '+ Upload Document'}
-                </button>
-                <input
-                  type="file"
-                  ref={idDocInputRef}
-                  onChange={(e) => setIdDocFileName(e.target.files?.[0]?.name || 'document.jpg')}
-                  className="hidden"
-                />
-              </div>
-            </div>
-
-            {/* 2. Business / Trade Registration (Explicitly OPTIONAL) */}
-            {employerType !== 'individual' && (
-              <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-darkbg-surface border border-neutral-200 dark:border-darkbg-border space-y-4 animate-fadeIn">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider text-rozgo-900 dark:text-rozgo-300">
-                    2. Business / Trade Registration (Optional)
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-neutral-100 text-neutral-600 dark:bg-darkbg-card dark:text-neutral-400">
-                    Optional
-                  </span>
-                </div>
-                <p className="text-xs text-neutral-500">
-                  Adding official business credentials builds high trust for commercial hiring. You may skip this and verify anytime later.
-                </p>
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {[
-                    { id: 'gstin', label: 'GSTIN Number' },
-                    { id: 'shop_act', label: 'Shop Act / Gumasta' },
-                    { id: 'msme', label: 'MSME Udyam' },
-                    { id: 'society_reg', label: 'Society / RWA Reg' },
-                  ].map((bOption) => (
-                    <button
-                      key={bOption.id}
-                      type="button"
-                      onClick={() => setBusinessDocType(bOption.id as any)}
-                      className={`py-2 px-2 rounded-xl text-xs font-bold border text-center transition-all ${
-                        businessDocType === bOption.id
-                          ? 'border-rozgo-900 bg-rozgo-900 text-white'
-                          : 'border-neutral-200 dark:border-darkbg-border bg-neutral-50 dark:bg-darkbg-card text-neutral-700 dark:text-neutral-300'
-                      }`}
+              {idDocFileName ? (
+                <div className="space-y-3">
+                  <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-300 text-sm font-bold">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span className="truncate max-w-xs">{idDocFileName}</span>
+                  </div>
+                  <div className="flex justify-center gap-3">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => idDocInputRef.current?.click()}
                     >
-                      {bOption.label}
-                    </button>
-                  ))}
+                      Change Document
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-rose-600 hover:text-rose-700"
+                      onClick={() => {
+                        setIdDocFileName(null);
+                        setIsIdVerified(false);
+                        if (idDocInputRef.current) idDocInputRef.current.value = '';
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  </div>
                 </div>
-
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={businessDocNumber}
-                    onChange={(e) => setBusinessDocNumber(e.target.value)}
-                    placeholder="Enter Registration / GSTIN No. (Optional)"
-                    className="flex-1 px-4 py-2.5 rounded-xl border border-neutral-300 dark:border-darkbg-border bg-white dark:bg-darkbg-surface text-rozgo-900 dark:text-rozgo-300 placeholder:text-neutral-400 font-mono font-bold text-sm tracking-wider focus:outline-hidden focus:ring-2 focus:ring-rozgo-900"
-                  />
-                  <Button
-                    variant={isBusinessVerified ? 'outline' : 'primary'}
-                    size="md"
-                    onClick={handleSimulateBusinessVerification}
-                  >
-                    {isBusinessVerified ? '✓ Verified' : 'Verify'}
-                  </Button>
-                </div>
-                {isBusinessVerified && (
-                  <p className="text-xs font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1 pt-0.5">
-                    <span>✓ Business Document Verified:</span>
-                    <span className="font-mono text-rozgo-900 dark:text-rozgo-300 tracking-wider">
-                      {businessDocType.toUpperCase()}: {businessDocNumber}
-                    </span>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <Button
+                      variant="primary"
+                      size="lg"
+                      className="!bg-[#123B32] hover:!bg-[#0D2B24] text-white font-bold"
+                      onClick={() => idDocInputRef.current?.click()}
+                      leftIcon={<Upload className="w-5 h-5" />}
+                    >
+                      Upload Document
+                    </Button>
+                  </div>
+                  <p className="text-xs text-neutral-500">
+                    Supports JPG, PNG, or PDF (Max 5MB)
                   </p>
-                )}
-              </div>
-            )}
+                </div>
+              )}
+            </div>
 
             <div className="pt-4 flex items-center justify-between border-t border-neutral-100 dark:border-darkbg-border">
               <Button variant="outline" size="md" onClick={handleBack} leftIcon={<ArrowLeft className="w-4 h-4" />}>
                 Back
               </Button>
               <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="md"
-                  onClick={() => {
-                    // Skip verification for now
-                    handleNext();
-                  }}
-                >
-                  Do This Later
-                </Button>
+                {!idDocFileName && (
+                  <Button
+                    variant="outline"
+                    size="md"
+                    onClick={() => handleNext()}
+                  >
+                    Skip for Now
+                  </Button>
+                )}
                 <Button variant="primary" size="lg" onClick={handleNext} rightIcon={<ArrowRight className="w-4 h-4" />}>
                   Continue to Final Review
                 </Button>
@@ -1148,89 +1089,7 @@ export const EmployerOnboardingPage: React.FC = () => {
               />
             </div>
 
-            {/* Communication & Languages */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
-                  Preferred Communication
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { id: 'call', label: 'Phone Call' },
-                    { id: 'app', label: 'App Alert' },
-                    { id: 'whatsapp', label: 'WhatsApp' },
-                  ].map((comm) => (
-                    <button
-                      key={comm.id}
-                      type="button"
-                      onClick={() => setPreferredCommunication(comm.id as any)}
-                      className={`py-2 px-2 rounded-xl text-xs font-bold border text-center transition-all ${
-                        preferredCommunication === comm.id
-                          ? 'border-rozgo-900 bg-rozgo-900 text-white'
-                          : 'border-neutral-200 dark:border-darkbg-border bg-white dark:bg-darkbg-surface text-neutral-700 dark:text-neutral-300'
-                      }`}
-                    >
-                      {comm.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
 
-              <div className="space-y-2">
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
-                  Languages Spoken
-                </label>
-                <div className="flex flex-wrap gap-1.5">
-                  {['Hindi', 'English', 'Punjabi', 'Bengali', 'Tamil', 'Telugu', 'Gujarati'].map((lang) => {
-                    const isChecked = languagesSpoken.includes(lang);
-                    return (
-                      <button
-                        key={lang}
-                        type="button"
-                        onClick={() => toggleLanguage(lang)}
-                        className={`px-3 py-1 rounded-xl text-xs font-bold border transition-all ${
-                          isChecked
-                            ? 'border-rozgo-900 bg-rozgo-900 text-white'
-                            : 'border-neutral-200 dark:border-darkbg-border bg-white dark:bg-darkbg-surface text-neutral-700 dark:text-neutral-300'
-                        }`}
-                      >
-                        {lang}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            {/* Emergency Contact */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
-                  Alternate Contact Name (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={emergencyContactName}
-                  onChange={(e) => setEmergencyContactName(e.target.value)}
-                  placeholder="e.g. Spouse, Partner, Colleague"
-                  className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 dark:border-darkbg-border text-sm"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
-                  Alternate Contact Phone (Optional)
-                </label>
-                <input
-                  type="tel"
-                  maxLength={10}
-                  value={emergencyContactPhone}
-                  onChange={(e) => setEmergencyContactPhone(e.target.value.replace(/\D/g, ''))}
-                  placeholder="e.g. 98111 77332"
-                  className="w-full px-4 py-2.5 rounded-xl border border-neutral-300 dark:border-darkbg-border text-sm"
-                />
-              </div>
-            </div>
 
             {/* Summary Review Card */}
             <div className="p-4 rounded-2xl bg-neutral-50 dark:bg-darkbg-surface border border-neutral-200 dark:border-darkbg-border space-y-3">

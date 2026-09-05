@@ -68,18 +68,12 @@ export const LandingPage: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col gap-16 sm:gap-24 pt-10 sm:pt-16 lg:pt-20 pb-8 sm:pb-12">
+    <div className="flex flex-col gap-16 sm:gap-24 pt-16 sm:pt-16 lg:pt-28 pb-8 sm:pb-12">
       {/* 1. HERO SECTION */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full pt-4 sm:pt-8 lg:pt-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
           {/* Left Hero Column */}
           <div className="lg:col-span-7 space-y-6 sm:space-y-8 text-left">
-            {/* Cooperative badge */}
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-rozgo-100 dark:bg-darkbg-card text-rozgo-900 dark:text-rozgo-300 border border-rozgo-200 dark:border-darkbg-border text-xs sm:text-sm font-bold shadow-xs">
-              <Sparkles className="w-4 h-4 text-rozgo-700 dark:text-rozgo-400" />
-              <span>{t('landing.heroBadge')}</span>
-            </div>
-
             {/* Main Headline */}
             <div className="space-y-1">
               <h1 className="text-4xl sm:text-6xl xl:text-7xl font-black text-neutral-900 dark:text-white tracking-tight leading-[1.08]">

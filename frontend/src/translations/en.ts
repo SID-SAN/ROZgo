@@ -50,7 +50,7 @@ export const en = {
     raiseGrievance: 'Raise a Grievance',
   },
   landing: {
-    heroBadge: '🤝 A Worker-Owned Cooperative Platform',
+    heroBadge: 'A Worker-Owned Cooperative Platform',
     heroLine1: 'Find Work.',
     heroLine2: 'Find Trusted Workers.',
     heroLine3: 'Grow Together.',

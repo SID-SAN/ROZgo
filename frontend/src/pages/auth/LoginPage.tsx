@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Phone, Lock, ArrowRight, Briefcase, Users } from 'lucide-react';
+import { Phone, Lock, ArrowRight, Briefcase, Users, CheckCircle2, RefreshCw, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
-
+import { authApi } from '../../api/authApi';
 import logoImg from '../../assets/logo.png';
 
 export const LoginPage: React.FC = () => {
@@ -31,6 +31,45 @@ export const LoginPage: React.FC = () => {
   const [otp, setOtp] = useState('');
   const [useOtp, setUseOtp] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  // OTP state & timers
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [isOtpSent, setIsOtpSent] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [otpCountdown, setOtpCountdown] = useState(0);
+
+  useEffect(() => {
+    let timer: any;
+    if (isOtpSent && otpCountdown > 0) {
+      timer = setInterval(() => {
+        setOtpCountdown((prev) => prev - 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [isOtpSent, otpCountdown]);
+
+  const handleSendOtp = async () => {
+    if (phone.length !== 10) {
+      setError('Please enter a valid 10-digit mobile number first.');
+      return;
+    }
+
+    setError(null);
+    setSuccessMsg(null);
+    setIsSendingOtp(true);
+
+    try {
+      const res = await authApi.sendOtp(phone);
+      setIsOtpSent(true);
+      setOtpCountdown(30);
+      setSuccessMsg(res.message + (res.demo_otp ? ` (Test OTP: ${res.demo_otp})` : ''));
+    } catch (err: any) {
+      setError(err.message || 'Failed to send OTP. Please try again.');
+    } finally {
+      setIsSendingOtp(false);
+    }
+  };
 
   const handleWorkerLogin = () => {
     loginAsWorker(phone || undefined);
@@ -43,30 +82,50 @@ export const LoginPage: React.FC = () => {
     navigate(service ? `/employer?service=${service}` : '/employer');
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (phone.length !== 10) {
       setError('Please enter a valid 10-digit mobile number');
       return;
     }
-    if (useOtp && otp.length < 4) {
-      setError('Please enter a valid 4 to 6 digit OTP');
-      return;
-    }
-    if (!useOtp && !otp.trim()) {
-      setError('Please enter your password');
-      return;
-    }
-    setError(null);
-    if (activeRole === 'employer') {
-      handleEmployerLogin();
+
+    if (useOtp) {
+      if (otp.length < 4) {
+        setError('Please enter the 4 to 6-digit OTP sent to your phone');
+        return;
+      }
+
+      setError(null);
+      setIsVerifying(true);
+
+      try {
+        await authApi.verifyOtp(phone, otp, activeRole);
+        if (activeRole === 'employer') {
+          handleEmployerLogin();
+        } else {
+          handleWorkerLogin();
+        }
+      } catch (err: any) {
+        setError(err.message || 'Invalid OTP entered. Please check and try again.');
+      } finally {
+        setIsVerifying(false);
+      }
     } else {
-      handleWorkerLogin();
+      if (!otp.trim()) {
+        setError('Please enter your password');
+        return;
+      }
+      setError(null);
+      if (activeRole === 'employer') {
+        handleEmployerLogin();
+      } else {
+        handleWorkerLogin();
+      }
     }
   };
 
   return (
-    <div className="min-h-[80vh] flex items-center justify-center px-4 py-12">
+    <div className="min-h-[80vh] flex items-center justify-center px-4 py-12 animate-fadeIn text-left">
       <div className="w-full max-w-md space-y-6">
         {/* Brand header with official logo */}
         <div className="text-center space-y-4">
@@ -105,7 +164,7 @@ export const LoginPage: React.FC = () => {
                   return p;
                 });
               }}
-              className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all ${
+              className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
                 activeRole === 'employer'
                   ? 'bg-rozgo-900 text-white shadow-soft'
                   : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
@@ -124,7 +183,7 @@ export const LoginPage: React.FC = () => {
                   return p;
                 });
               }}
-              className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all ${
+              className={`flex-1 py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer ${
                 activeRole === 'worker'
                   ? 'bg-rozgo-900 text-white shadow-soft'
                   : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white'
@@ -137,12 +196,20 @@ export const LoginPage: React.FC = () => {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
-              <div className="p-3 rounded-2xl bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 text-xs font-semibold border border-red-200 dark:border-red-900/60 flex items-center gap-2">
-                <span>⚠️ {error}</span>
+              <div className="p-3.5 rounded-2xl bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 text-xs font-semibold border border-red-200 dark:border-red-900/60 flex items-center gap-2 animate-fadeIn">
+                <AlertCircle className="w-4 h-4 shrink-0 text-red-600 dark:text-red-400" />
+                <span>{error}</span>
               </div>
             )}
 
-            {/* Mobile number input */}
+            {successMsg && (
+              <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 text-xs font-semibold border border-emerald-200 dark:border-emerald-900/60 flex items-center gap-2 animate-fadeIn">
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                <span>{successMsg}</span>
+              </div>
+            )}
+
+            {/* Mobile number input with Send OTP CTA */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-xs font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
@@ -152,29 +219,53 @@ export const LoginPage: React.FC = () => {
                   {phone.length}/10 digits
                 </span>
               </div>
-              <div className="relative flex items-center">
-                <Phone className="w-5 h-5 absolute left-3.5 text-neutral-400 pointer-events-none" />
-                <input
-                  type="tel"
-                  inputMode="numeric"
-                  pattern="[0-9]{10}"
-                  maxLength={10}
-                  value={phone}
-                  onChange={(e) => {
-                    setError(null);
-                    setPhone(e.target.value.replace(/\D/g, '').slice(0, 10));
-                  }}
-                  placeholder="Enter 10-digit mobile number"
-                  className="w-full pl-11 pr-4 py-3 rounded-2xl bg-neutral-50 dark:bg-darkbg-surface border border-neutral-200 dark:border-darkbg-border text-neutral-900 dark:text-white font-bold text-base tracking-wider focus:outline-none focus:ring-2 focus:ring-rozgo-900"
-                  required
-                />
+              <div className="flex gap-2">
+                <div className="relative flex-1 flex items-center">
+                  <Phone className="w-5 h-5 absolute left-3.5 text-neutral-400 pointer-events-none" />
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9]{10}"
+                    maxLength={10}
+                    value={phone}
+                    onChange={(e) => {
+                      setError(null);
+                      setSuccessMsg(null);
+                      setPhone(e.target.value.replace(/\D/g, '').slice(0, 10));
+                    }}
+                    placeholder="10-digit mobile number"
+                    className="w-full pl-11 pr-4 py-3 rounded-2xl bg-neutral-50 dark:bg-darkbg-surface border border-neutral-200 dark:border-darkbg-border text-neutral-900 dark:text-white font-bold text-base tracking-wider focus:outline-none focus:ring-2 focus:ring-rozgo-900"
+                    required
+                  />
+                </div>
+
+                {useOtp && (
+                  <Button
+                    type="button"
+                    variant={isOtpSent ? 'outline' : 'primary'}
+                    size="md"
+                    onClick={handleSendOtp}
+                    disabled={phone.length !== 10 || isSendingOtp || (isOtpSent && otpCountdown > 0)}
+                    className="shrink-0 font-bold whitespace-nowrap text-xs px-4"
+                  >
+                    {isSendingOtp ? (
+                      'Sending...'
+                    ) : isOtpSent && otpCountdown > 0 ? (
+                      `Resend (${otpCountdown}s)`
+                    ) : isOtpSent ? (
+                      'Resend OTP'
+                    ) : (
+                      'Send OTP'
+                    )}
+                  </Button>
+                )}
               </div>
               <p className="text-[11px] text-neutral-400 mt-1">
-                Enter your 10-digit mobile number (numbers only)
+                Enter your 10-digit mobile number and click Send OTP.
               </p>
             </div>
 
-            {/* OTP / Password */}
+            {/* OTP / Password input */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-xs font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
@@ -184,9 +275,10 @@ export const LoginPage: React.FC = () => {
                   type="button"
                   onClick={() => {
                     setError(null);
+                    setSuccessMsg(null);
                     setUseOtp(!useOtp);
                   }}
-                  className="text-xs text-rozgo-700 dark:text-rozgo-400 font-bold hover:underline"
+                  className="text-xs text-rozgo-700 dark:text-rozgo-400 font-bold hover:underline cursor-pointer"
                 >
                   {useOtp ? 'Use Password' : 'Use OTP'}
                 </button>
@@ -202,23 +294,24 @@ export const LoginPage: React.FC = () => {
                     setError(null);
                     setOtp(useOtp ? e.target.value.replace(/\D/g, '').slice(0, 6) : e.target.value);
                   }}
-                  placeholder={useOtp ? 'Enter 4 or 6 digit OTP' : '••••••••'}
-                  className="w-full pl-11 pr-4 py-3 rounded-2xl bg-neutral-50 dark:bg-darkbg-surface border border-neutral-200 dark:border-darkbg-border text-neutral-900 dark:text-white font-mono text-base focus:outline-none focus:ring-2 focus:ring-rozgo-900"
+                  placeholder={useOtp ? 'Enter 4 or 6-digit OTP' : '••••••••'}
+                  className="w-full pl-11 pr-4 py-3 rounded-2xl bg-neutral-50 dark:bg-darkbg-surface border border-neutral-200 dark:border-darkbg-border text-neutral-900 dark:text-white font-mono text-base tracking-widest focus:outline-none focus:ring-2 focus:ring-rozgo-900"
                   required
                 />
               </div>
             </div>
 
-            {/* Login button */}
+            {/* Submit button */}
             <Button
               type="submit"
               variant="primary"
               size="lg"
               fullWidth
-              disabled={phone.length !== 10 || (useOtp ? otp.length < 4 : !otp.trim())}
+              disabled={phone.length !== 10 || (useOtp ? otp.length < 4 : !otp.trim()) || isVerifying}
               rightIcon={<ArrowRight className="w-4 h-4" />}
+              className="font-bold shadow-soft"
             >
-              {activeRole === 'employer' ? 'Login as Employer' : 'Login as Worker'}
+              {isVerifying ? 'Verifying OTP...' : useOtp ? 'Verify OTP & Login' : (activeRole === 'employer' ? 'Login as Employer' : 'Login as Worker')}
             </Button>
           </form>
         </Card>
@@ -239,4 +332,3 @@ export const LoginPage: React.FC = () => {
     </div>
   );
 };
-
