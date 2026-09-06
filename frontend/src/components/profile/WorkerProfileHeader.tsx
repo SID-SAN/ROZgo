@@ -194,8 +194,8 @@ export const WorkerProfileHeader: React.FC<WorkerProfileHeaderProps> = ({
             <div className="flex flex-wrap items-center justify-center md:justify-start gap-4 pt-1">
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 text-amber-900 dark:text-amber-200 text-xs font-black">
                 <Star className="w-4 h-4 fill-amber-400 text-amber-400" />
-                <span>{worker.rating.toFixed(1)}</span>
-                <span className="text-neutral-400 font-medium font-mono">({worker.reviews.length} reviews)</span>
+                <span>{(worker.rating || 0).toFixed(1)}</span>
+                <span className="text-neutral-400 font-medium font-mono">({(worker.reviews || []).length} reviews)</span>
               </div>
 
               <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-rozgo-50 dark:bg-rozgo-950/30 border border-rozgo-200 dark:border-rozgo-900/40 text-neutral-800 dark:text-neutral-200 text-xs font-bold">

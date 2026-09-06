@@ -680,7 +680,7 @@ export const EmployerProfilePage: React.FC = () => {
 
                 {employerUser.reviews && employerUser.reviews.length > 0 ? (
                   <div className="space-y-3">
-                    {employerUser.reviews.map((rev) => (
+                    {(employerUser.reviews || []).map((rev) => (
                       <div
                         key={rev.id}
                         className="p-3.5 rounded-2xl bg-neutral-50/70 dark:bg-darkbg-surface border border-neutral-200/80 dark:border-darkbg-border space-y-1.5 text-xs"

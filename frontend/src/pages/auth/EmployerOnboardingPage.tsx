@@ -51,13 +51,11 @@ export const EmployerOnboardingPage: React.FC = () => {
   const [gender, setGender] = useState<string>('Not Specified');
   const [customPhotoUrl, setCustomPhotoUrl] = useState<string | null>(null);
 
-  // STEP 2: Contact Details & Mobile Verification
+  // STEP 2: Contact Details & Account Setup
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState('');
-  const [isOtpSent, setIsOtpSent] = useState(false);
-  const [isOtpVerified, setIsOtpVerified] = useState(false);
-  const [otpCountdown, setOtpCountdown] = useState(0);
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   // STEP 3: Employer Type
   const [employerType, setEmployerType] = useState<EmployerType>('individual');
@@ -99,61 +97,6 @@ export const EmployerOnboardingPage: React.FC = () => {
   const [generatedEmployerId, setGeneratedEmployerId] = useState<string>('');
   const [copiedId, setCopiedId] = useState(false);
 
-  // OTP State & Timers
-  const [isSendingOtp, setIsSendingOtp] = useState(false);
-  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
-  const [otpFeedback, setOtpFeedback] = useState<string | null>(null);
-
-  // OTP Countdown timer
-  useEffect(() => {
-    let timer: any;
-    if (isOtpSent && otpCountdown > 0) {
-      timer = setInterval(() => {
-        setOtpCountdown((prev) => prev - 1);
-      }, 1000);
-    }
-    return () => clearInterval(timer);
-  }, [isOtpSent, otpCountdown]);
-
-  const handleSendOtp = async () => {
-    if (phone.length !== 10) {
-      setFormError('Please enter a valid 10-digit mobile number first.');
-      return;
-    }
-    setFormError(null);
-    setOtpFeedback(null);
-    setIsSendingOtp(true);
-    try {
-      const res = await authApi.sendOtp(phone);
-      setIsOtpSent(true);
-      setOtpCountdown(30);
-      setOtp('');
-      setIsOtpVerified(false);
-      setOtpFeedback(res.message + (res.demo_otp ? ` (Test OTP: ${res.demo_otp})` : ''));
-    } catch (err: any) {
-      setFormError(err.message || 'Failed to send OTP. Please try again.');
-    } finally {
-      setIsSendingOtp(false);
-    }
-  };
-
-  const handleVerifyOtp = async () => {
-    if (otp.trim().length < 4) {
-      setFormError('Please enter the 4 to 6-digit OTP sent to your phone.');
-      return;
-    }
-    setFormError(null);
-    setIsVerifyingOtp(true);
-    try {
-      await authApi.verifyOtp(phone, otp, 'employer');
-      setIsOtpVerified(true);
-      setOtpFeedback('Mobile number verified successfully! ✓');
-    } catch (err: any) {
-      setFormError(err.message || 'Invalid OTP entered. Please try again (Demo OTP: 123456).');
-    } finally {
-      setIsVerifyingOtp(false);
-    }
-  };
 
   const handleSimulateLocation = () => {
     setIsLocating(true);
@@ -241,8 +184,12 @@ export const EmployerOnboardingPage: React.FC = () => {
         setFormError('Please enter a valid 10-digit mobile number.');
         return false;
       }
-      if (!isOtpVerified) {
-        setFormError('Please verify your mobile number with the OTP.');
+      if (password.length < 4) {
+        setFormError('Password must be at least 4 characters.');
+        return false;
+      }
+      if (password !== confirmPassword) {
+        setFormError('Passwords do not match.');
         return false;
       }
       return true;
@@ -289,7 +236,7 @@ export const EmployerOnboardingPage: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleCompleteRegistration = () => {
+  const handleCompleteRegistration = async () => {
     if (!validateStep(6)) return;
 
     const fullEmployerName = `${firstName.trim()} ${lastName.trim()}`.trim();
@@ -308,44 +255,49 @@ export const EmployerOnboardingPage: React.FC = () => {
 
     const isVerified = isIdVerified || isBusinessVerified;
 
-    const newEmployerId = registerEmployer({
-      name: fullEmployerName,
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      phone: `+91 ${phone}`,
-      email: email.trim() || undefined,
-      dobOrAge: dobOrAge || undefined,
-      gender,
-      avatar: customPhotoUrl || undefined,
-      employerType,
-      location: displayLocation,
-      workLocations: [defaultLoc, ...extraLocations],
-      hiringPreferences: {
-        frequentlyNeededTrades: ['plumber', 'electrician'],
-        hiringFrequency: 'occasional',
-        workersUsuallyNeeded: '1',
-        preferredWorkTimes: ['Flexible'],
-      },
-      bio: bio.trim() || undefined,
-      preferredCommunication,
-      languagesSpoken,
-      emergencyContactName: emergencyContactName.trim() || undefined,
-      emergencyContactPhone: emergencyContactPhone.trim() || undefined,
-      verificationDetails: {
-        mobileVerified: true,
-        identityVerified: isIdVerified,
-        identityType: isIdVerified ? identityType : undefined,
-        identityMasked: isIdVerified ? `XXXX XXXX ${identityNumber.slice(-4) || '8219'}` : undefined,
-        businessVerified: isBusinessVerified,
-        businessDocType: isBusinessVerified ? businessDocType : undefined,
-        businessDocNumber: isBusinessVerified ? businessDocNumber : undefined,
-        status: isVerified ? 'verified' : 'not_verified',
-      },
-    });
+    try {
+      const newEmployerId = await registerEmployer({
+        name: fullEmployerName,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        phone: `+91 ${phone}`,
+        email: email.trim() || undefined,
+        password,
+        dobOrAge: dobOrAge || undefined,
+        gender,
+        avatar: customPhotoUrl || undefined,
+        employerType,
+        location: displayLocation,
+        workLocations: [defaultLoc, ...extraLocations],
+        hiringPreferences: {
+          frequentlyNeededTrades: ['plumber', 'electrician'],
+          hiringFrequency: 'occasional',
+          workersUsuallyNeeded: '1',
+          preferredWorkTimes: ['Flexible'],
+        },
+        bio: bio.trim() || undefined,
+        preferredCommunication,
+        languagesSpoken,
+        emergencyContactName: emergencyContactName.trim() || undefined,
+        emergencyContactPhone: emergencyContactPhone.trim() || undefined,
+        verificationDetails: {
+          mobileVerified: true,
+          identityVerified: isIdVerified,
+          identityType: isIdVerified ? identityType : undefined,
+          identityMasked: isIdVerified ? `XXXX XXXX ${identityNumber.slice(-4) || '8219'}` : undefined,
+          businessVerified: isBusinessVerified,
+          businessDocType: isBusinessVerified ? businessDocType : undefined,
+          businessDocNumber: isBusinessVerified ? businessDocNumber : undefined,
+          status: isVerified ? 'verified' : 'not_verified',
+        },
+      });
 
-    setGeneratedEmployerId(newEmployerId);
-    setCurrentStep(7); // Move to completion screen
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+      setGeneratedEmployerId(newEmployerId);
+      setCurrentStep(7); // Move to completion screen
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err: any) {
+      setFormError(err.message || 'Registration failed. Please try again.');
+    }
   };
 
   const copyEmployerId = () => {
@@ -565,13 +517,13 @@ export const EmployerOnboardingPage: React.FC = () => {
           </Card>
         )}
 
-        {/* STEP 2: Contact Details & Mobile Verification */}
+        {/* STEP 2: Contact Details & Account Setup */}
         {currentStep === 2 && (
           <Card variant="elevated" padding="lg" className="space-y-6">
             <div>
-              <h2 className="text-2xl font-black text-neutral-900 dark:text-white">Contact & Verification</h2>
+              <h2 className="text-2xl font-black text-neutral-900 dark:text-white">Account Setup</h2>
               <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
-                Direct phone calls are the heart of ROZGO. Your phone number connects you directly to local workers.
+                Enter your mobile number and set a password. Your phone number connects you directly to local workers.
               </p>
             </div>
 
@@ -591,74 +543,48 @@ export const EmployerOnboardingPage: React.FC = () => {
                   onChange={(e) => {
                     const clean = e.target.value.replace(/\D/g, '');
                     setPhone(clean);
-                    if (isOtpVerified) setIsOtpVerified(false);
                   }}
                   placeholder="98111 88234"
                   className="flex-1 px-4 py-3 rounded-2xl border border-neutral-300 dark:border-darkbg-border bg-white dark:bg-darkbg-surface text-neutral-900 dark:text-white font-bold text-lg tracking-wider focus:outline-hidden focus:ring-2 focus:ring-rozgo-900"
                 />
-                {!isOtpVerified && (
-                  <Button
-                    type="button"
-                    variant={isOtpSent ? 'outline' : 'primary'}
-                    size="md"
-                    onClick={handleSendOtp}
-                    disabled={phone.length !== 10 || isSendingOtp || (isOtpSent && otpCountdown > 0)}
-                  >
-                    {isSendingOtp
-                      ? 'Sending...'
-                      : isOtpSent
-                      ? (otpCountdown > 0 ? `Resend (${otpCountdown}s)` : 'Resend OTP')
-                      : 'Send OTP'}
-                  </Button>
-                )}
               </div>
             </div>
 
-            {/* OTP Section */}
-            {isOtpSent && !isOtpVerified && (
-              <div className="p-4 rounded-2xl bg-rozgo-50 dark:bg-darkbg-surface border border-rozgo-200 dark:border-darkbg-border space-y-3 animate-fadeIn">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-rozgo-900 dark:text-rozgo-300 flex items-center gap-1.5">
-                    <KeyRound className="w-4 h-4" />
-                    Enter 4 to 6-Digit OTP sent to +91 {phone}
-                  </span>
-                  {otpFeedback && (
-                    <span className="text-[11px] font-semibold text-neutral-600 dark:text-neutral-300">
-                      {otpFeedback}
-                    </span>
-                  )}
-                </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    maxLength={6}
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                    placeholder="123456"
-                    className="flex-1 px-4 py-2.5 rounded-xl border border-neutral-300 dark:border-darkbg-border font-mono font-bold tracking-widest text-center text-lg bg-white dark:bg-darkbg-base"
-                  />
-                  <Button
-                    type="button"
-                    variant="primary"
-                    size="md"
-                    onClick={handleVerifyOtp}
-                    disabled={otp.length < 4 || isVerifyingOtp}
-                  >
-                    {isVerifyingOtp ? 'Verifying...' : 'Verify OTP'}
-                  </Button>
-                </div>
+            {/* Password Input */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                Password <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full px-4 py-3 rounded-2xl border border-neutral-300 dark:border-darkbg-border bg-white dark:bg-darkbg-surface text-neutral-900 dark:text-white font-mono text-base tracking-widest focus:outline-hidden focus:ring-2 focus:ring-rozgo-900"
+                  required
+                />
               </div>
-            )}
+            </div>
 
-            {isOtpVerified && (
-              <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 flex items-center justify-between text-emerald-800 dark:text-emerald-300 font-bold text-sm animate-fadeIn">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                  <span>Mobile Number Verified (+91 {phone})</span>
-                </div>
-                <Badge variant="verified" size="sm">✓ Verified</Badge>
+            {/* Confirm Password Input */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300">
+                Confirm Password <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full px-4 py-3 rounded-2xl border border-neutral-300 dark:border-darkbg-border bg-white dark:bg-darkbg-surface text-neutral-900 dark:text-white font-mono text-base tracking-widest focus:outline-hidden focus:ring-2 focus:ring-rozgo-900"
+                  required
+                />
               </div>
-            )}
+            </div>
+
+
 
             {/* Email Address */}
             <div className="space-y-1.5 pt-2">

@@ -1,5 +1,100 @@
 import { VerificationApplication, WorkerVerificationMethod } from '../types';
 
+const STATE_CODES: Record<string, string> = {
+  rajasthan: 'rj',
+  delhi: 'dl',
+  'uttar pradesh': 'up',
+  up: 'up',
+  haryana: 'hr',
+  maharashtra: 'mh',
+  karnataka: 'ka',
+  gujarat: 'gj',
+  'tamil nadu': 'tn',
+  'west bengal': 'wb',
+  'madhya pradesh': 'mp',
+  mp: 'mp',
+  bihar: 'br',
+  punjab: 'pb',
+  telangana: 'ts',
+  'andhra pradesh': 'ap',
+  kerala: 'kl',
+  odisha: 'od',
+  jharkhand: 'jh',
+  uttarakhand: 'uk',
+  assam: 'as',
+  chhattisgarh: 'cg',
+  goa: 'ga',
+  'himachal pradesh': 'hp',
+};
+
+const CITY_CODES: Record<string, string> = {
+  jaipur: 'jp',
+  jodhpur: 'jd',
+  udaipur: 'ud',
+  kota: 'kt',
+  bikaner: 'bk',
+  ajmer: 'aj',
+  delhi: 'dl',
+  'new delhi': 'nd',
+  noida: 'no',
+  'greater noida': 'gn',
+  ghaziabad: 'gz',
+  gurgaon: 'gg',
+  gurugram: 'gg',
+  faridabad: 'fb',
+  mumbai: 'mb',
+  pune: 'pn',
+  bangalore: 'bl',
+  bengaluru: 'bl',
+  hyderabad: 'hy',
+  chennai: 'ch',
+  kolkata: 'kl',
+  ahmedabad: 'ah',
+  surat: 'sr',
+  lucknow: 'lk',
+  kanpur: 'kp',
+  varanasi: 'vn',
+  agra: 'ag',
+  patna: 'pt',
+  chandigarh: 'ch',
+  indore: 'id',
+  bhopal: 'bp',
+};
+
+export function generateSequentialWorkerId(state?: string, city?: string, location?: string): string {
+  let s = (state || '').trim().toLowerCase();
+  let c = (city || '').trim().toLowerCase();
+  const loc = (location || '').toLowerCase();
+
+  if (!s || !c) {
+    for (const [name, code] of Object.entries(STATE_CODES)) {
+      if (loc.includes(name)) {
+        s = code;
+        break;
+      }
+    }
+    for (const [name, code] of Object.entries(CITY_CODES)) {
+      if (loc.includes(name)) {
+        c = code;
+        break;
+      }
+    }
+  }
+
+  const stateCode = STATE_CODES[s] || (s.length >= 2 ? s.slice(0, 2) : 'rj');
+  const cityCode = CITY_CODES[c] || (c.length >= 2 ? c.slice(0, 2) : 'jp');
+  const prefix = `${stateCode}-${cityCode}-`;
+
+  // Read counter from localStorage to ensure sequential incrementing
+  const counterKey = `rozgo_seq_${prefix}`;
+  const currentCount = parseInt(localStorage.getItem(counterKey) || '0', 10);
+  const nextSeq = currentCount + 1;
+  localStorage.setItem(counterKey, String(nextSeq));
+
+  const padSeq = String(nextSeq).padStart(4, '0');
+  return `${prefix}${padSeq}`;
+}
+
 // ============================================================================
 // Service Abstraction: Aadhaar Verification
 // In production, connect UIDAI authentication/e-KYC partner gateway here.
@@ -158,7 +253,7 @@ export const verificationQueueService = {
         console.error('Error parsing verification queue:', e);
       }
     }
-    return INITIAL_APPLICATIONS;
+    return [];
   },
 
   saveApplications(apps: VerificationApplication[]): void {
@@ -223,8 +318,7 @@ export const verificationQueueService = {
     const app = applications.find((a) => a.id === id);
     if (!app) return { success: false, labourNumber: '' };
 
-    const randomDigits = Math.floor(100000 + Math.random() * 900000);
-    const labourNumber = `RZG-${randomDigits}`;
+    const labourNumber = generateSequentialWorkerId();
 
     app.status = 'verified';
     app.reviewedAt = new Date().toLocaleDateString('en-GB');

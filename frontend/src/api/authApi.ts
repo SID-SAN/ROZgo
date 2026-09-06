@@ -1,13 +1,7 @@
 import { apiClient, ApiError } from './apiClient';
 import { API_ENDPOINTS } from './endpoints';
 
-export interface SendOtpResult {
-  success: boolean;
-  message: string;
-  demo_otp?: string;
-}
-
-export interface VerifyOtpResult {
+export interface AuthResult {
   success: boolean;
   token?: string;
   role?: 'worker' | 'employer';
@@ -18,38 +12,18 @@ export interface VerifyOtpResult {
 
 export const authApi = {
   /**
-   * Connect to backend /api/v1/auth/otp/send to dispatch OTP SMS
+   * Connect to backend /api/v1/auth/login to validate password
    */
-  async sendOtp(phone: string): Promise<SendOtpResult> {
-    const cleanPhone = phone.replace(/\D/g, '').trim();
-    try {
-      const response = await apiClient.post<SendOtpResult>(API_ENDPOINTS.AUTH.LOGIN_OTP, {
-        phone: cleanPhone,
-      });
-      return response;
-    } catch (err: any) {
-      console.warn('Backend sendOtp error or server offline, using local resilience:', err);
-      // Fallback if backend server is not reachable
-      return {
-        success: true,
-        message: `OTP sent successfully to +91 ${cleanPhone}`,
-        demo_otp: '123456',
-      };
+  async loginWithPassword(phone: string, password: string): Promise<AuthResult> {
+    let cleanPhone = phone.replace(/\D/g, '').trim();
+    if (cleanPhone.startsWith('91') && cleanPhone.length === 12) {
+      cleanPhone = cleanPhone.slice(2);
     }
-  },
-
-  /**
-   * Connect to backend /api/v1/auth/otp/verify to validate entered OTP
-   */
-  async verifyOtp(phone: string, otp: string, role: 'worker' | 'employer' = 'worker'): Promise<VerifyOtpResult> {
-    const cleanPhone = phone.replace(/\D/g, '').trim();
-    const cleanOtp = otp.trim();
 
     try {
-      const response = await apiClient.post<VerifyOtpResult>(API_ENDPOINTS.AUTH.VERIFY_OTP, {
+      const response = await apiClient.post<AuthResult>(API_ENDPOINTS.AUTH.LOGIN_PASSWORD, {
         phone: cleanPhone,
-        otp: cleanOtp,
-        role,
+        password: password,
       });
 
       if (response.token) {
@@ -57,26 +31,31 @@ export const authApi = {
       }
       return response;
     } catch (err: any) {
-      // If backend explicitly rejected OTP (e.g. 400 Bad Request)
-      if (err instanceof ApiError && err.statusCode === 400) {
-        throw new Error(err.data?.detail || err.message || 'Invalid OTP entered. Please try again.');
+      if (err instanceof ApiError && err.statusCode === 401) {
+        throw new Error(err.data?.detail || err.message || 'Invalid phone or password.');
       }
-
-      console.warn('Backend verifyOtp connection error, using local validation:', err);
-      // Local demo validation if backend server is completely offline
-      if (cleanOtp === '123456' || cleanOtp === '4829' || cleanOtp === '5821' || cleanOtp.length >= 4) {
-        const dummyToken = `rozgo_token_${Date.now()}`;
-        apiClient.setToken(dummyToken);
-        return {
-          success: true,
-          token: dummyToken,
-          role,
-          user: { phone: cleanPhone, role },
-          profile: { phone: cleanPhone, role, name: role === 'worker' ? 'Ramesh Kumar' : 'Rahul Sharma' },
-        };
+      console.warn('Backend login connection error:', err);
+      throw new Error(err.message || 'Login failed. Please check your credentials and try again.');
+    }
+  },
+  async register(data: { phone: string; password?: string; role: 'worker' | 'employer'; name: string; location?: string; primary_skill?: string; experience_years?: number; employer_type?: string; business_name?: string }): Promise<AuthResult> {
+    let cleanPhone = data.phone.replace(/\D/g, '').trim();
+    if (cleanPhone.startsWith('91') && cleanPhone.length === 12) {
+      cleanPhone = cleanPhone.slice(2);
+    }
+    
+    try {
+      const response = await apiClient.post<AuthResult>('/auth/register', {
+        ...data,
+        phone: cleanPhone,
+      });
+      if (response.token) {
+        apiClient.setToken(response.token);
       }
-
-      throw new Error('Invalid OTP entered. Please try again (Demo OTP: 123456).');
+      return response;
+    } catch (err: any) {
+      console.warn('Backend register error:', err);
+      throw new Error(err.message || 'Registration failed. Please check your details and try again.');
     }
   },
 };

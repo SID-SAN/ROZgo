@@ -61,7 +61,7 @@ export const GrievanceProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         console.error('Error parsing saved grievances:', e);
       }
     }
-    return INITIAL_MOCK_GRIEVANCES;
+    return [];
   });
 
   useEffect(() => {

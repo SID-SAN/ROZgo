@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
+import { useAuth } from '../../context/AuthContext';
 import { useBooking } from '../../context/BookingContext';
 import { SERVICES_DATA } from '../../data/servicesData';
 import { DifficultyLevel } from '../../types';
@@ -26,6 +27,7 @@ import { Badge } from '../../components/common/Badge';
 
 export const CreateWorkRequestPage: React.FC = () => {
   const { t } = useLanguage();
+  const { employerUser } = useAuth();
   const { startWorkRequest } = useBooking();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -41,10 +43,14 @@ export const CreateWorkRequestPage: React.FC = () => {
   });
 
   const [difficulty, setDifficulty] = useState<DifficultyLevel>('Intermediate');
-  const [description, setDescription] = useState<string>(
-    'Need plumbing and masonry work for washroom tile repair and mixer tap replacement.'
-  );
-  const [location, setLocation] = useState<string>('Tower 4, Sushant Lok 1, Gurgaon');
+  const [description, setDescription] = useState<string>('');
+  const [location, setLocation] = useState<string>(employerUser?.location || '');
+
+  useEffect(() => {
+    if (employerUser?.location && !location) {
+      setLocation(employerUser.location);
+    }
+  }, [employerUser?.location]);
   const [preferredDate, setPreferredDate] = useState<string>('Today');
   const [preferredTime, setPreferredTime] = useState<string>('11:00 AM');
   const [needsMultipleWorkers, setNeedsMultipleWorkers] = useState<boolean>(false);

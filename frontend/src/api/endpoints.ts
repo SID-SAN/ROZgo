@@ -34,5 +34,11 @@ export const API_ENDPOINTS = {
     COMPLETE_WORK: (id: string) => `/bookings/${id}/complete`,
     SUBMIT_REVIEW: (id: string) => `/bookings/${id}/review`,
   },
+  CONTRACTS: {
+    SUBMIT: '/bookings/contracts/submit',
+    GET_WORKER_CONTRACTS: (workerId: string) => `/bookings/contracts/worker/${workerId}`,
+    ACCEPT: (contractId: string) => `/bookings/contracts/${contractId}/accept`,
+    REJECT: (contractId: string) => `/bookings/contracts/${contractId}/reject`,
+  },
 };
 

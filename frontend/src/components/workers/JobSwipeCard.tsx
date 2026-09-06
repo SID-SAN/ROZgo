@@ -130,6 +130,21 @@ export const JobSwipeCard: React.FC<JobSwipeCardProps> = ({
           "{job.description}"
         </p>
 
+        {/* Offered Wage - Show only if wage exists */}
+        {job.wage && (
+          <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-darkbg-surface/80 dark:to-darkbg-surface border border-emerald-200 dark:border-emerald-900/30">
+            <div className="text-[11px] font-bold text-neutral-500 dark:text-neutral-400 uppercase tracking-wider mb-1">
+              💚 Offered Wage
+            </div>
+            <div className="text-3xl sm:text-4xl font-black text-emerald-700 dark:text-emerald-400">
+              ₹{job.wage.toLocaleString('en-IN')}
+            </div>
+            <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-1">
+              Negotiated directly with employer
+            </div>
+          </div>
+        )}
+
         {/* Key Metrics Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6 text-sm">
           <div className="flex items-center gap-2 p-3 rounded-xl bg-white dark:bg-darkbg-card border border-neutral-200/80 dark:border-darkbg-border">

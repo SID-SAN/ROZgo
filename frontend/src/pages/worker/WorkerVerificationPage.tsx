@@ -46,7 +46,7 @@ const SAMPLE_DOCS = {
 
 export const WorkerVerificationPage: React.FC = () => {
   const navigate = useNavigate();
-  const { workerUser, submitWorkerVerification, resetWorkerVerificationDemo } = useAuth();
+  const { workerUser, submitWorkerVerification } = useAuth();
   const { t } = useLanguage();
 
   // If already submitted or verified, default step to 4 (status view)
@@ -1321,20 +1321,6 @@ export const WorkerVerificationPage: React.FC = () => {
                 >
                   View Profile & Trust Badge
                 </Button>
-              </div>
-
-              {/* Demo Reset helper */}
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    resetWorkerVerificationDemo();
-                    setStep(1);
-                  }}
-                  className="text-[11px] text-neutral-500 hover:text-neutral-800 dark:hover:text-white underline"
-                >
-                  Restart / Reset Verification Demo
-                </button>
               </div>
             </div>
           )}

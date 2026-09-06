@@ -10,6 +10,8 @@ import {
 } from '../types';
 import { MOCK_WORKERS } from '../data/mockWorkers';
 import { MOCK_JOBS } from '../data/mockJobs';
+import { apiClient } from '../api/apiClient';
+import { API_ENDPOINTS } from '../api/endpoints';
 
 export interface StartWorkRequestParams {
   serviceCategory?: string;
@@ -37,6 +39,9 @@ interface BookingContextType {
   matchedWorkersByTrade: Record<string, WorkerProfile>;
   requestedCategories: string[];
   additionalWorkers: BookingWorkerItem[];
+  // Live Data lists
+  availableWorkersList: WorkerProfile[];
+  availableJobsList: JobRecommendation[];
   // Matching state for worker
   currentJobIndex: number;
   currentJob: JobRecommendation | null;
@@ -53,7 +58,7 @@ interface BookingContextType {
     time: string;
   }) => BookingAgreement;
   confirmAllPendingAgreements: (agreedWages: Record<string, number>, date: string, time: string) => BookingAgreement[];
-  selectJobAsActiveAgreement: (job: JobRecommendation, wage?: number) => BookingAgreement;
+  selectJobAsActiveAgreement: (job: JobRecommendation, wage?: number, status?: BookingStatus) => BookingAgreement;
   workerConfirmBooking: (agreementId: string, accept: boolean) => void;
   employerRejectBooking: (reason?: string, agreementId?: string) => void;
   switchMatchedWorker: (nextWorkerId?: string, tradeCategory?: string) => WorkerProfile | null;
@@ -66,242 +71,8 @@ interface BookingContextType {
   resetDemoBooking: () => void;
 }
 
-const INITIAL_ACTIVE_BOOKINGS: BookingAgreement[] = [
-  {
-    id: 'bk-demo-1',
-    bookingNumber: 'RZG-BK-8419',
-    workTitle: 'Tap Repair & Washroom Leakage',
-    serviceCategory: 'plumber',
-    subcategory: 'Tap Repair & Fitting',
-    difficulty: 'Intermediate',
-    description: 'Bathroom wall mixer dripping continuously, need angle valve servicing.',
-    location: 'Tower 4, Sushant Lok 1, Gurgaon',
-    employerId: 'e1',
-    employerName: 'Rahul Sharma',
-    employerPhone: '+91 98111 88234',
-    workers: [
-      {
-        workerId: 'w1',
-        name: 'Ramesh Kumar',
-        labourNumber: 'RZG-104582',
-        phone: '+91 98765 43210',
-        avatar: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=160&auto=format&fit=crop&q=80',
-      },
-    ],
-    workersCount: 1,
-    date: '12 Sept 2026',
-    time: '10:00 AM',
-    agreedWage: 1500,
-    status: 'confirmed',
-    createdAt: '12 Sept 2026, 09:15 AM',
-  },
-];
-
-const INITIAL_COMPLETED_BOOKINGS: BookingAgreement[] = [
-  {
-    id: 'bk-comp-1',
-    bookingNumber: 'RZG-BK-7302',
-    workTitle: 'Kitchen Drain Clearing',
-    serviceCategory: 'plumber',
-    subcategory: 'Drain Blockage & Cleaning',
-    difficulty: 'Easy',
-    description: 'Blocked drain trap under kitchen sink.',
-    location: 'Sector 54, Gurgaon',
-    employerId: 'e2',
-    employerName: 'Priya Mehra',
-    employerPhone: '+91 98103 44102',
-    workers: [
-      {
-        workerId: 'w10',
-        name: 'Amit Kumar',
-        labourNumber: 'RZG-849201',
-        phone: '+91 98712 34567',
-      },
-    ],
-    workersCount: 1,
-    date: '12 Aug 2026',
-    time: '02:30 PM',
-    agreedWage: 750,
-    status: 'completed',
-    createdAt: '12 Aug 2026, 01:45 PM',
-    completedAt: '12 Aug 2026, 04:00 PM',
-    ratingGiven: true,
-  },
-  {
-    id: 'bk-comp-2',
-    bookingNumber: 'RZG-BK-6819',
-    workTitle: 'Bathroom Tap Replacement & Sealing',
-    serviceCategory: 'plumber',
-    subcategory: 'Tap & Shower Fitting',
-    difficulty: 'Intermediate',
-    description: 'Replacing leaking brass mixer tap in master bathroom.',
-    location: 'DLF Phase 2, Gurgaon',
-    employerId: 'e3',
-    employerName: 'Sanjay Sharma',
-    employerPhone: '+91 98210 55921',
-    workers: [
-      {
-        workerId: 'w10',
-        name: 'Amit Kumar',
-        labourNumber: 'RZG-849201',
-        phone: '+91 98712 34567',
-      },
-    ],
-    workersCount: 1,
-    date: '04 Aug 2026',
-    time: '10:00 AM',
-    agreedWage: 1200,
-    status: 'completed',
-    createdAt: '04 Aug 2026, 09:15 AM',
-    completedAt: '04 Aug 2026, 12:30 PM',
-    ratingGiven: true,
-  },
-  {
-    id: 'bk-comp-3',
-    bookingNumber: 'RZG-BK-5904',
-    workTitle: 'Overhead Tank Pipeline Joint Repair',
-    serviceCategory: 'plumber',
-    subcategory: 'Pipeline Installation & Repair',
-    difficulty: 'High',
-    description: 'Fixing cracked PVC joint connecting terrace overhead storage tank.',
-    location: 'Sushant Lok 1, Gurgaon',
-    employerId: 'e4',
-    employerName: 'Anil Verma',
-    employerPhone: '+91 98731 22890',
-    workers: [
-      {
-        workerId: 'w10',
-        name: 'Amit Kumar',
-        labourNumber: 'RZG-849201',
-        phone: '+91 98712 34567',
-      },
-    ],
-    workersCount: 1,
-    date: '28 Jul 2026',
-    time: '11:30 AM',
-    agreedWage: 1650,
-    status: 'completed',
-    createdAt: '28 Jul 2026, 10:45 AM',
-    completedAt: '28 Jul 2026, 03:00 PM',
-    ratingGiven: true,
-  },
-  {
-    id: 'bk-comp-4',
-    bookingNumber: 'RZG-BK-5211',
-    workTitle: 'Water Geyser Inlet Valve & Pipe Leakage',
-    serviceCategory: 'plumber',
-    subcategory: 'Geyser Installation & Repair',
-    difficulty: 'Easy',
-    description: 'Replaced rusted brass angle valve and flexible braided hose pipe.',
-    location: 'South City 1, Gurgaon',
-    employerId: 'e5',
-    employerName: 'Kavita Singh',
-    employerPhone: '+91 98118 77201',
-    workers: [
-      {
-        workerId: 'w10',
-        name: 'Amit Kumar',
-        labourNumber: 'RZG-849201',
-        phone: '+91 98712 34567',
-      },
-    ],
-    workersCount: 1,
-    date: '21 Jul 2026',
-    time: '03:15 PM',
-    agreedWage: 850,
-    status: 'completed',
-    createdAt: '21 Jul 2026, 02:30 PM',
-    completedAt: '21 Jul 2026, 04:30 PM',
-    ratingGiven: true,
-  },
-  {
-    id: 'bk-comp-5',
-    bookingNumber: 'RZG-BK-4780',
-    workTitle: 'Kitchen Sink Faucet & Mixer Replacement',
-    serviceCategory: 'plumber',
-    subcategory: 'Tap & Shower Fitting',
-    difficulty: 'Intermediate',
-    description: 'Removed damaged swivel faucet and fitted chrome quarter-turn mixer.',
-    location: 'Sector 45, Gurgaon',
-    employerId: 'e6',
-    employerName: 'Deepak Joshi',
-    employerPhone: '+91 98711 44521',
-    workers: [
-      {
-        workerId: 'w10',
-        name: 'Amit Kumar',
-        labourNumber: 'RZG-849201',
-        phone: '+91 98712 34567',
-      },
-    ],
-    workersCount: 1,
-    date: '15 Jul 2026',
-    time: '09:30 AM',
-    agreedWage: 1100,
-    status: 'completed',
-    createdAt: '15 Jul 2026, 08:45 AM',
-    completedAt: '15 Jul 2026, 11:45 AM',
-    ratingGiven: true,
-  },
-  {
-    id: 'bk-comp-6',
-    bookingNumber: 'RZG-BK-3912',
-    workTitle: 'Submersible Pump Pipe Connection',
-    serviceCategory: 'plumber',
-    subcategory: 'Motor & Pump Repair',
-    difficulty: 'High',
-    description: 'Secured high-pressure delivery pipe joint with heavy clamp and non-return valve.',
-    location: 'Sector 31, Gurgaon',
-    employerId: 'e7',
-    employerName: 'Ramesh Chawla',
-    employerPhone: '+91 98102 99182',
-    workers: [
-      {
-        workerId: 'w10',
-        name: 'Amit Kumar',
-        labourNumber: 'RZG-849201',
-        phone: '+91 98712 34567',
-      },
-    ],
-    workersCount: 1,
-    date: '08 Jul 2026',
-    time: '01:00 PM',
-    agreedWage: 1450,
-    status: 'completed',
-    createdAt: '08 Jul 2026, 12:15 PM',
-    completedAt: '08 Jul 2026, 03:45 PM',
-    ratingGiven: true,
-  },
-  {
-    id: 'bk-comp-7',
-    bookingNumber: 'RZG-BK-3105',
-    workTitle: 'Bathroom Waste Pipe Clogging & Cleanout',
-    serviceCategory: 'plumber',
-    subcategory: 'Drain Blockage & Cleaning',
-    difficulty: 'Easy',
-    description: 'High-pressure rod cleaning through external nahani trap.',
-    location: 'Sector 23, Gurgaon',
-    employerId: 'e8',
-    employerName: 'Sunita Rao',
-    employerPhone: '+91 98991 33412',
-    workers: [
-      {
-        workerId: 'w10',
-        name: 'Amit Kumar',
-        labourNumber: 'RZG-849201',
-        phone: '+91 98712 34567',
-      },
-    ],
-    workersCount: 1,
-    date: '02 Jul 2026',
-    time: '11:00 AM',
-    agreedWage: 650,
-    status: 'completed',
-    createdAt: '02 Jul 2026, 10:20 AM',
-    completedAt: '02 Jul 2026, 12:15 PM',
-    ratingGiven: true,
-  },
-];
+const INITIAL_ACTIVE_BOOKINGS: BookingAgreement[] = [];
+const INITIAL_COMPLETED_BOOKINGS: BookingAgreement[] = [];
 
 const BookingContext = createContext<BookingContextType | undefined>(undefined);
 
@@ -325,7 +96,7 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
       } catch {}
     }
-    return INITIAL_ACTIVE_BOOKINGS;
+    return [];
   });
 
   const [completedAgreements, setCompletedAgreements] = useState<BookingAgreement[]>(() => {
@@ -338,8 +109,249 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
       } catch {}
     }
-    return INITIAL_COMPLETED_BOOKINGS;
+    return [];
   });
+
+  const [liveWorkers, setLiveWorkers] = useState<WorkerProfile[]>([]);
+
+  useEffect(() => {
+    async function fetchLiveWorkers() {
+      try {
+        const res = await apiClient.get<WorkerProfile[]>(API_ENDPOINTS.WORKERS.LIST);
+        if (Array.isArray(res) && res.length > 0) {
+          // Normalize worker fields for frontend compatibility
+          const normalized = res.map((w: any) => ({
+            ...w,
+            labourNumber: w.labourNo || w.labourNumber,
+            primarySkill: (w.primarySkill || 'plumber').toLowerCase(),
+            skills: Array.isArray(w.skills) ? w.skills : [w.primarySkill || 'Plumber'],
+            distanceKm: w.distanceKm || 2.5,
+            completedJobsCount: w.completedJobsCount ?? 0,
+            isVerified: w.verified !== undefined ? w.verified : true,
+            verificationStatus: w.verificationStatus || 'verified',
+            reviews: w.reviews || [],
+            avatar: w.avatar || 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=400&auto=format&fit=crop&q=80',
+          }));
+          setLiveWorkers(normalized);
+          console.log(`%c[ROZgo Live Data]%c Loaded ${normalized.length} real workers from Supabase`, 'color: #10b981; font-weight: bold;', 'color: auto;');
+        }
+      } catch (e) {
+        console.warn('Backend workers endpoint unreachable, using local fallback:', e);
+      }
+    }
+    fetchLiveWorkers();
+  }, []);
+
+  const availableWorkersList = liveWorkers.length > 0 ? liveWorkers : MOCK_WORKERS;
+
+  const [liveJobs, setLiveJobs] = useState<JobRecommendation[]>([]);
+
+  // 1. Fetch completed bookings from DB on mount so records are preserved for future needs
+  useEffect(() => {
+    async function fetchCompletedFromBackend() {
+      try {
+        const res = await apiClient.get<any[]>('/bookings/completed');
+        if (Array.isArray(res) && res.length > 0) {
+          setCompletedAgreements((prev) => {
+            const existingIds = new Set(prev.map((a) => a.id));
+            const existingRefs = new Set(prev.map((a) => a.bookingNumber));
+            const newCompleted: BookingAgreement[] = [];
+
+            res.forEach((b) => {
+              if (!existingIds.has(b.id) && !existingRefs.has(b.bookingNumber)) {
+                newCompleted.push({
+                  id: b.id,
+                  bookingNumber: b.bookingNumber || `RZG-BK-${b.id.slice(0, 4).toUpperCase()}`,
+                  workTitle: b.workTitle || b.jobTitle || 'Completed Service',
+                  serviceCategory: b.serviceCategory || 'plumber',
+                  subcategory: b.subcategory || 'General',
+                  difficulty: 'Intermediate',
+                  description: b.description || 'Completed cooperative service.',
+                  location: b.location || 'Local Area',
+                  employerId: 'emp-direct',
+                  employerName: b.employerName || 'Direct Customer',
+                  employerPhone: b.employerPhone || '+91 98111 88234',
+                  workers: b.workers && b.workers.length > 0 ? b.workers : [
+                    {
+                      workerId: 'w1',
+                      name: 'raj',
+                      labourNumber: 'hr-gu-0001',
+                      phone: '+91 1234567890',
+                      avatar: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=160&auto=format&fit=crop&q=80',
+                    }
+                  ],
+                  workersCount: b.workersCount || 1,
+                  date: b.date || 'Today',
+                  time: b.time || '11:00 AM',
+                  agreedWage: b.agreedWage || 500,
+                  status: 'completed',
+                  completedAt: b.completedAt || 'Recently',
+                  createdAt: b.completedAt || 'Recently',
+                });
+              }
+            });
+
+            if (newCompleted.length > 0) {
+              return [...prev, ...newCompleted];
+            }
+            return prev;
+          });
+        }
+      } catch (err) {
+        console.warn('Completed bookings fetch notice:', err);
+      }
+    }
+    fetchCompletedFromBackend();
+  }, []);
+
+  // 2. Periodic sync for active bookings: updates employer page to "confirmed/ongoing" when worker accepts, and keeps worker job queue clean
+  useEffect(() => {
+    let isMounted = true;
+
+    async function syncActiveWithBackend() {
+      try {
+        const res = await apiClient.get<any[]>('/bookings/active');
+        if (!isMounted || !Array.isArray(res)) return;
+
+        // Filter out jobs that are already 'active' (accepted) from worker's available queue
+        const unassigned = res.filter((b) => b.status !== 'active');
+        if (unassigned.length > 0) {
+          const mappedJobs: JobRecommendation[] = unassigned.map((b, idx) => ({
+            id: b.id || `job-${idx + 1}`,
+            serviceCategory: b.serviceCategory || 'plumber',
+            subcategory: b.jobTitle || b.workTitle || 'General Service',
+            difficulty: 'Intermediate',
+            location: b.location || 'Gurgaon, Haryana',
+            distanceKm: 2.2,
+            workersNeeded: b.workersCount || 1,
+            employerName: b.employerName || 'Direct Customer',
+            employerPhone: b.employerPhone || '+91 98111 88234',
+            preferredTime: `${b.date || 'Today'}, 11:00 AM`,
+            estimatedHours: '2 - 3 hours',
+            description: b.description || 'Mutually verified work request.',
+            postedAt: 'Just now',
+            wage: b.agreedWage || b.wage_offer || 1200,
+          }));
+          setLiveJobs(mappedJobs);
+        }
+
+        // Sync active agreements for employer and worker: merge backend active/pending bookings
+        setActiveAgreements((prevAgreements) => {
+          let hasChanges = false;
+
+          // Helper to map a backend booking to a frontend BookingAgreement
+          const mapBackendToAgreement = (b: any): BookingAgreement => ({
+            id: String(b.id),
+            bookingNumber: b.bookingNumber || `RZG-BK-${String(b.id).slice(0, 4).toUpperCase()}`,
+            workTitle: b.jobTitle || b.workTitle || 'Trade Service',
+            serviceCategory: b.serviceCategory || 'plumber',
+            subcategory: b.subcategory || 'General',
+            difficulty: 'Intermediate',
+            description: b.description || '',
+            location: b.location || 'Gurgaon, Haryana',
+            employerId: 'emp-direct',
+            employerName: b.employerName || 'Direct Customer',
+            employerPhone: b.employerPhone || '+91 98111 88234',
+            workers: b.workers && b.workers.length > 0 ? b.workers : [
+              {
+                workerId: 'w1',
+                name: 'raj',
+                labourNumber: 'hr-gu-0001',
+                phone: '+91 1234567890',
+                avatar: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=160&auto=format&fit=crop&q=80',
+              }
+            ],
+            workersCount: (b.workers && b.workers.length) || 1,
+            date: b.date || 'Today',
+            time: b.time || '11:00 AM',
+            agreedWage: Number(b.agreedWage || b.wage_offer || 582),
+            status: (b.status === 'active' ? 'confirmed' : 'awaiting_confirmation') as BookingStatus,
+            createdAt: 'Today',
+          });
+
+          // If local activeAgreements is empty, populate directly from backend bookings
+          if (prevAgreements.length === 0 && res.length > 0) {
+            const validBookings = res.filter((b) => b.status === 'active' || b.status === 'agreement_pending');
+            if (validBookings.length > 0) {
+              return validBookings.map(mapBackendToAgreement);
+            }
+            return prevAgreements;
+          }
+
+          // Update existing agreements
+          const updated = prevAgreements.map((agr) => {
+            const dbMatch = res.find((b) =>
+              b.id === agr.id ||
+              b.bookingNumber === agr.bookingNumber ||
+              b.bookingNumber === agr.id ||
+              (agr.agreedWage === Number(b.agreedWage || b.wage_offer) &&
+                b.workers?.[0]?.name &&
+                agr.workers?.[0]?.name &&
+                b.workers[0].name.toLowerCase() === agr.workers[0].name.toLowerCase()) ||
+              // Reconcile temporary local frontend IDs (bk-...) with backend booking
+              (agr.id.startsWith('bk-') && (
+                b.serviceCategory === agr.serviceCategory ||
+                (b.workers?.[0]?.name && agr.workers?.[0]?.name && b.workers[0].name.toLowerCase() === agr.workers[0].name.toLowerCase()) ||
+                res.length === 1
+              )) ||
+              (res.length === 1 && prevAgreements.length === 1)
+            );
+
+            if (dbMatch) {
+              const newStatus: BookingStatus = dbMatch.status === 'active' ? 'confirmed' : (dbMatch.status === 'agreement_pending' ? 'awaiting_confirmation' : agr.status);
+              const hasStatusChanged = newStatus !== agr.status;
+              const hasWorkerData = dbMatch.workers && dbMatch.workers.length > 0;
+              const hasIdUpdated = agr.id !== String(dbMatch.id) || agr.bookingNumber !== dbMatch.bookingNumber;
+
+              if (hasStatusChanged || hasIdUpdated || (hasWorkerData && (!agr.workers || agr.workers.length === 0 || !agr.workers[0].phone))) {
+                hasChanges = true;
+                return {
+                  ...agr,
+                  id: String(dbMatch.id || agr.id),
+                  bookingNumber: dbMatch.bookingNumber || agr.bookingNumber,
+                  status: newStatus,
+                  workers: hasWorkerData ? dbMatch.workers : agr.workers,
+                  workersCount: dbMatch.workersCount || agr.workersCount,
+                  agreedWage: Number(dbMatch.agreedWage || dbMatch.wage_offer || agr.agreedWage),
+                  employerName: dbMatch.employerName || agr.employerName,
+                  employerPhone: dbMatch.employerPhone || agr.employerPhone,
+                };
+              }
+            }
+            return agr;
+          });
+
+          // Check if any active/pending booking from backend is missing from local list
+          const existingIds = new Set(updated.map((a) => String(a.id)));
+          const existingRefs = new Set(updated.map((a) => a.bookingNumber));
+          const missingFromBackend = res.filter(
+            (b) =>
+              (b.status === 'active' || b.status === 'agreement_pending') &&
+              !existingIds.has(String(b.id)) &&
+              !existingRefs.has(b.bookingNumber)
+          );
+
+          if (missingFromBackend.length > 0) {
+            hasChanges = true;
+            const newAgreements = missingFromBackend.map(mapBackendToAgreement);
+            return [...newAgreements, ...updated];
+          }
+
+          return hasChanges ? updated : prevAgreements;
+        });
+      } catch (err) {
+        // Silently catch polling issues
+      }
+    }
+
+    syncActiveWithBackend();
+    const interval = setInterval(syncActiveWithBackend, 2000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   const [requestedCategories, setRequestedCategories] = useState<string[]>(['plumber']);
   const [matchedWorkersByTrade, setMatchedWorkersByTrade] = useState<Record<string, WorkerProfile>>(() => {
@@ -415,7 +427,8 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
-  const currentJob = MOCK_JOBS[currentJobIndex] || null;
+  const availableJobsList = liveJobs;
+  const currentJob = availableJobsList[currentJobIndex] || null;
 
   const startWorkRequest = (params: StartWorkRequestParams): WorkerProfile | null => {
     setRejectedWorkerIds([]);
@@ -435,10 +448,41 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const createdAgreements: BookingAgreement[] = [];
 
     categories.forEach((cat, index) => {
+      const localId = `bk-${Date.now()}-${index}-${Math.floor(Math.random() * 1000)}`;
+      const localRef = `RZG-BK-${Math.floor(1000 + Math.random() * 9000)}`;
+
+      // Fire API call and adopt backend IDs when response arrives
+      apiClient.post<any>('/bookings/request', {
+        serviceCategory: cat,
+        subcategory: (params.categoryTasks && params.categoryTasks[cat]) || params.subcategory || cat,
+        description: params.description || '',
+        location: params.location || '',
+        preferredDate: params.preferredDate || 'Today',
+        preferredTime: params.preferredTime || '11:00 AM',
+        wageOffer: 1200,
+        workersNeeded: (params.workersNeededPerCategory && params.workersNeededPerCategory[cat]) || params.workersNeeded || 1
+      }).then(res => {
+        // Update the local agreement with the real backend ID and booking number
+        if (res && (res.id || res.bookingNumber)) {
+          setActiveAgreements(prev =>
+            prev.map(agr => {
+              if (agr.id === localId) {
+                return {
+                  ...agr,
+                  id: res.id || agr.id,
+                  bookingNumber: res.bookingNumber || agr.bookingNumber,
+                };
+              }
+              return agr;
+            })
+          );
+        }
+      }).catch(err => console.error("Error creating task in DB:", err));
+
       const suitable =
-        MOCK_WORKERS.find((w) => w.primarySkill === cat) ||
-        MOCK_WORKERS[index % MOCK_WORKERS.length] ||
-        MOCK_WORKERS[0];
+        availableWorkersList.find((w) => w.primarySkill.toLowerCase() === cat.toLowerCase()) ||
+        availableWorkersList[index % availableWorkersList.length] ||
+        availableWorkersList[0];
 
       newMatchedMap[cat] = suitable;
 
@@ -453,8 +497,8 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
         1;
 
       const booking: BookingAgreement = {
-        id: `bk-${Date.now()}-${index}-${Math.floor(Math.random() * 1000)}`,
-        bookingNumber: `RZG-BK-${Math.floor(1000 + Math.random() * 9000)}`,
+        id: localId,
+        bookingNumber: localRef,
         workTitle: `${subtask} (${params.difficulty})`,
         serviceCategory: cat,
         subcategory: subtask,
@@ -496,14 +540,27 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const addWorkerByLabourNumber = (labourNo: string, targetAgreementId?: string) => {
     const cleaned = labourNo.trim().toUpperCase();
-    const found = MOCK_WORKERS.find(
+    
+    // Check locally registered worker profile first
+    let savedWorker: WorkerProfile | null = null;
+    try {
+      const stored = localStorage.getItem('rozgo_worker_profile');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (parsed?.labourNumber && parsed.labourNumber.toUpperCase() === cleaned) {
+          savedWorker = parsed;
+        }
+      }
+    } catch {}
+
+    const found = savedWorker || availableWorkersList.find(
       (w) => w.labourNumber && w.labourNumber.toUpperCase() === cleaned
     );
 
     if (!found) {
       return {
         success: false,
-        message: `Worker with Labour Number "${cleaned}" was not found. Try RZG-419032 or RZG-620194.`,
+        message: `Worker with Labour Number "${cleaned}" was not found. Try rj-jp-0001 or rj-jp-0002.`,
       };
     }
 
@@ -539,7 +596,7 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const addRecommendedWorker = (targetAgreementId?: string): boolean => {
-    const candidate = MOCK_WORKERS.find(
+    const candidate = availableWorkersList.find(
       (w) => !additionalWorkers.some((item) => item.workerId === w.id)
     );
 
@@ -633,6 +690,17 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
             status: 'awaiting_confirmation',
           };
           updatedList.push(updated);
+
+          // Sync to backend
+          const workerId = agr.workers[0]?.workerId || '';
+          apiClient.post('/bookings/agreement/confirm', {
+            bookingId: agr.bookingNumber || agr.id,
+            workerId,
+            agreedWage: wage,
+            date,
+            time,
+          }).catch(err => console.error("Error confirming agreement in DB:", err));
+
           return updated;
         }
         return agr;
@@ -643,7 +711,8 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const selectJobAsActiveAgreement = (
     job: JobRecommendation,
-    wage: number = 1200
+    wage: number = 1200,
+    status: BookingStatus = 'awaiting_confirmation'
   ): BookingAgreement => {
     const newAgreement: BookingAgreement = {
       id: `bk-${Date.now()}`,
@@ -671,31 +740,69 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       date: 'Today',
       time: job.preferredTime || '11:00 AM',
       agreedWage: wage,
-      status: 'awaiting_confirmation',
+      status,
       createdAt: 'Just now',
     };
 
     setActiveAgreements((prev) => [newAgreement, ...prev]);
+
+    if (status === 'confirmed') {
+      // Remove from worker live opportunities queue immediately
+      setLiveJobs((prev) => prev.filter((j) => j.id !== job.id && j.subcategory !== job.subcategory));
+      const workerId = newAgreement.workers[0]?.workerId || '';
+      apiClient.post('/bookings/agreement/confirm', {
+        bookingId: newAgreement.bookingNumber || newAgreement.id,
+        workerId,
+        agreedWage: newAgreement.agreedWage,
+        date: newAgreement.date,
+        time: newAgreement.time,
+      }).catch(err => console.error("Error syncing worker acceptance to DB:", err));
+    }
+
     return newAgreement;
   };
 
   const workerConfirmBooking = (agreementId: string, accept: boolean) => {
-    setActiveAgreements((prev) =>
-      prev.map((agr) => {
+    setActiveAgreements((prev) => {
+      if (!accept) {
+        // Declined: remove from active agreements
+        const target = prev.find((a) => a.id === agreementId || !agreementId);
+        if (target) {
+          apiClient.post('/bookings/agreement/worker-response', {
+            bookingId: target.id,
+            bookingNumber: target.bookingNumber,
+            accept: false,
+            rejectReason: 'Declined by worker',
+          }).catch((err) => console.error('Error rejecting booking:', err));
+        }
+        return prev.filter((a) => a.id !== agreementId);
+      }
+
+      return prev.map((agr) => {
         if (agr.id === agreementId || !agreementId) {
-          if (accept) {
-            return { ...agr, status: 'confirmed' as BookingStatus };
-          }
-          return {
-            ...agr,
-            status: 'rejected' as BookingStatus,
-            rejectedBy: 'worker',
-            rejectionReason: 'Declined by worker',
-          };
+          // Sync acceptance to backend
+          const workerId = agr.workers[0]?.workerId || '';
+          apiClient.post('/bookings/agreement/worker-response', {
+            bookingId: agr.id,
+            bookingNumber: agr.bookingNumber,
+            accept: true,
+          }).catch(() => {
+            // Fallback
+            apiClient.post('/bookings/agreement/confirm', {
+              bookingId: agr.bookingNumber || agr.id,
+              workerId,
+              agreedWage: agr.agreedWage,
+              date: agr.date,
+              time: agr.time,
+              confirmedByWorker: true,
+            }).catch((err) => console.error('Error syncing worker acceptance to DB:', err));
+          });
+
+          return { ...agr, status: 'confirmed' as BookingStatus };
         }
         return agr;
-      })
-    );
+      });
+    });
   };
 
   const employerRejectBooking = (reason?: string, agreementId?: string) => {
@@ -714,8 +821,8 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const currentWorker = matchedWorkersByTrade[category] || matchedWorker;
     const currentId = nextWorkerId || currentWorker?.id;
 
-    const sameTradeWorkers = MOCK_WORKERS.filter((w) => w.primarySkill === category);
-    const pool = sameTradeWorkers.length > 1 ? sameTradeWorkers : MOCK_WORKERS;
+    const sameTradeWorkers = availableWorkersList.filter((w) => w.primarySkill.toLowerCase() === category.toLowerCase());
+    const pool = sameTradeWorkers.length > 1 ? sameTradeWorkers : availableWorkersList;
     const nextWorker = pool.find((w) => w.id !== currentId) || pool[0];
 
     if (!nextWorker) return null;
@@ -765,7 +872,7 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
       });
     }
 
-    const sameTradeWorkers = MOCK_WORKERS.filter((w) => w.primarySkill === category);
+    const sameTradeWorkers = availableWorkersList.filter((w) => w.primarySkill.toLowerCase() === category.toLowerCase());
     let nextCandidate: WorkerProfile | null =
       sameTradeWorkers.find((w) => !newRejected.includes(w.id)) || null;
     let noMoreWorkers = false;
@@ -773,8 +880,8 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!nextCandidate) {
       nextCandidate =
         sameTradeWorkers.find((w) => w.id !== currentId) ||
-        MOCK_WORKERS.find((w) => !newRejected.includes(w.id)) ||
-        MOCK_WORKERS.find((w) => w.id !== currentId) ||
+        availableWorkersList.find((w) => !newRejected.includes(w.id)) ||
+        availableWorkersList.find((w) => w.id !== currentId) ||
         null;
       noMoreWorkers = true;
     }
@@ -807,7 +914,7 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const markWorkCompleted = (agreementId: string) => {
-    const targetAgreement = activeAgreements.find((a) => a.id === agreementId) || activeAgreements[0];
+    const targetAgreement = activeAgreements.find((a) => a.id === agreementId || a.bookingNumber === agreementId) || activeAgreements[0];
     if (!targetAgreement) return;
 
     const completed: BookingAgreement = {
@@ -819,9 +926,22 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
         year: 'numeric',
       }),
     };
+    
+    // Call backend endpoint to mark complete in DB and generate digital receipt
+    apiClient.post(`/bookings/${targetAgreement.id}/complete`).catch(err => {
+      // Fallback to reference if id is not matching supabase uuid
+      apiClient.post(`/bookings/${targetAgreement.bookingNumber}/complete`).catch(e => console.error("Error completing in DB", e));
+    });
 
-    setActiveAgreements((prev) => prev.filter((a) => a.id !== targetAgreement.id));
-    setCompletedAgreements((prev) => [completed, ...prev]);
+    // 1. Remove from active agreements queue
+    setActiveAgreements((prev) => prev.filter((a) => a.id !== targetAgreement.id && a.bookingNumber !== targetAgreement.bookingNumber));
+    // 2. Remove from live available jobs queue
+    setLiveJobs((prev) => prev.filter((j) => j.id !== targetAgreement.id && j.id !== targetAgreement.bookingNumber));
+    // 3. Store in completed agreements for future needs
+    setCompletedAgreements((prev) => {
+      const filtered = prev.filter((a) => a.id !== targetAgreement.id && a.bookingNumber !== targetAgreement.bookingNumber);
+      return [completed, ...filtered];
+    });
   };
 
   const submitReview = (
@@ -851,6 +971,17 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
         workerMatch.reviews = [newReview, ...workerMatch.reviews];
         workerMatch.completedJobsCount += 1;
       }
+
+      // Sync review to backend
+      const bookingRef = target.bookingNumber || target.id;
+      apiClient.post(`/bookings/${bookingRef}/review`, {
+        rating,
+        comment,
+        tags: tags || [],
+        authorName: 'Rahul Sharma',
+        authorRole: 'employer',
+        workerId: target.workers[0].workerId,
+      }).catch(err => console.error("Error submitting review to DB:", err));
     }
   };
 
@@ -876,6 +1007,8 @@ export const BookingProvider: React.FC<{ children: React.ReactNode }> = ({ child
         matchedWorkersByTrade,
         requestedCategories,
         additionalWorkers,
+        availableWorkersList,
+        availableJobsList,
         currentJobIndex,
         currentJob,
         isSearchingNextJob,

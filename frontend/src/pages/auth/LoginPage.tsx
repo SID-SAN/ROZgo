@@ -28,48 +28,10 @@ export const LoginPage: React.FC = () => {
   }, [roleParam]);
 
   const [phone, setPhone] = useState('');
-  const [otp, setOtp] = useState('');
-  const [useOtp, setUseOtp] = useState(true);
+  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-
-  // OTP state & timers
-  const [isSendingOtp, setIsSendingOtp] = useState(false);
-  const [isOtpSent, setIsOtpSent] = useState(false);
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [otpCountdown, setOtpCountdown] = useState(0);
-
-  useEffect(() => {
-    let timer: any;
-    if (isOtpSent && otpCountdown > 0) {
-      timer = setInterval(() => {
-        setOtpCountdown((prev) => prev - 1);
-      }, 1000);
-    }
-    return () => clearInterval(timer);
-  }, [isOtpSent, otpCountdown]);
-
-  const handleSendOtp = async () => {
-    if (phone.length !== 10) {
-      setError('Please enter a valid 10-digit mobile number first.');
-      return;
-    }
-
-    setError(null);
-    setSuccessMsg(null);
-    setIsSendingOtp(true);
-
-    try {
-      const res = await authApi.sendOtp(phone);
-      setIsOtpSent(true);
-      setOtpCountdown(30);
-      setSuccessMsg(res.message + (res.demo_otp ? ` (Test OTP: ${res.demo_otp})` : ''));
-    } catch (err: any) {
-      setError(err.message || 'Failed to send OTP. Please try again.');
-    } finally {
-      setIsSendingOtp(false);
-    }
-  };
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const handleWorkerLogin = () => {
     loginAsWorker(phone || undefined);
@@ -88,39 +50,33 @@ export const LoginPage: React.FC = () => {
       setError('Please enter a valid 10-digit mobile number');
       return;
     }
+    
+    if (!password.trim()) {
+      setError('Please enter your password');
+      return;
+    }
 
-    if (useOtp) {
-      if (otp.length < 4) {
-        setError('Please enter the 4 to 6-digit OTP sent to your phone');
-        return;
-      }
+    setError(null);
+    setIsLoggingIn(true);
 
-      setError(null);
-      setIsVerifying(true);
-
-      try {
-        await authApi.verifyOtp(phone, otp, activeRole);
-        if (activeRole === 'employer') {
-          handleEmployerLogin();
-        } else {
-          handleWorkerLogin();
-        }
-      } catch (err: any) {
-        setError(err.message || 'Invalid OTP entered. Please check and try again.');
-      } finally {
-        setIsVerifying(false);
-      }
-    } else {
-      if (!otp.trim()) {
-        setError('Please enter your password');
-        return;
-      }
-      setError(null);
+    try {
+      const result = await authApi.loginWithPassword(phone, password);
+      setSuccessMsg('Login successful!');
+      
+      const profile = result.profile;
+      
       if (activeRole === 'employer') {
-        handleEmployerLogin();
+        const service = searchParams.get('service');
+        loginAsEmployer(profile || phone);
+        navigate(service ? `/employer?service=${service}` : '/employer');
       } else {
-        handleWorkerLogin();
+        loginAsWorker(profile || phone);
+        navigate('/worker/dashboard');
       }
+    } catch (err: any) {
+      setError(err.message || 'Invalid phone number or password. Please try again.');
+    } finally {
+      setIsLoggingIn(false);
     }
   };
 
@@ -209,7 +165,7 @@ export const LoginPage: React.FC = () => {
               </div>
             )}
 
-            {/* Mobile number input with Send OTP CTA */}
+            {/* Mobile number input */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-xs font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
@@ -238,63 +194,26 @@ export const LoginPage: React.FC = () => {
                     required
                   />
                 </div>
-
-                {useOtp && (
-                  <Button
-                    type="button"
-                    variant={isOtpSent ? 'outline' : 'primary'}
-                    size="md"
-                    onClick={handleSendOtp}
-                    disabled={phone.length !== 10 || isSendingOtp || (isOtpSent && otpCountdown > 0)}
-                    className="shrink-0 font-bold whitespace-nowrap text-xs px-4"
-                  >
-                    {isSendingOtp ? (
-                      'Sending...'
-                    ) : isOtpSent && otpCountdown > 0 ? (
-                      `Resend (${otpCountdown}s)`
-                    ) : isOtpSent ? (
-                      'Resend OTP'
-                    ) : (
-                      'Send OTP'
-                    )}
-                  </Button>
-                )}
               </div>
-              <p className="text-[11px] text-neutral-400 mt-1">
-                Enter your 10-digit mobile number and click Send OTP.
-              </p>
             </div>
 
-            {/* OTP / Password input */}
+            {/* Password input */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-xs font-bold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
-                  {useOtp ? t('auth.otpLabel') : 'Password'}
+                  Password
                 </label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setError(null);
-                    setSuccessMsg(null);
-                    setUseOtp(!useOtp);
-                  }}
-                  className="text-xs text-rozgo-700 dark:text-rozgo-400 font-bold hover:underline cursor-pointer"
-                >
-                  {useOtp ? 'Use Password' : 'Use OTP'}
-                </button>
               </div>
               <div className="relative flex items-center">
                 <Lock className="w-5 h-5 absolute left-3.5 text-neutral-400 pointer-events-none" />
                 <input
-                  type={useOtp ? 'tel' : 'password'}
-                  inputMode={useOtp ? 'numeric' : 'text'}
-                  maxLength={useOtp ? 6 : 30}
-                  value={otp}
+                  type="password"
+                  value={password}
                   onChange={(e) => {
                     setError(null);
-                    setOtp(useOtp ? e.target.value.replace(/\D/g, '').slice(0, 6) : e.target.value);
+                    setPassword(e.target.value);
                   }}
-                  placeholder={useOtp ? 'Enter 4 or 6-digit OTP' : '••••••••'}
+                  placeholder="••••••••"
                   className="w-full pl-11 pr-4 py-3 rounded-2xl bg-neutral-50 dark:bg-darkbg-surface border border-neutral-200 dark:border-darkbg-border text-neutral-900 dark:text-white font-mono text-base tracking-widest focus:outline-none focus:ring-2 focus:ring-rozgo-900"
                   required
                 />
@@ -307,11 +226,11 @@ export const LoginPage: React.FC = () => {
               variant="primary"
               size="lg"
               fullWidth
-              disabled={phone.length !== 10 || (useOtp ? otp.length < 4 : !otp.trim()) || isVerifying}
+              disabled={phone.length !== 10 || !password.trim() || isLoggingIn}
               rightIcon={<ArrowRight className="w-4 h-4" />}
               className="font-bold shadow-soft"
             >
-              {isVerifying ? 'Verifying OTP...' : useOtp ? 'Verify OTP & Login' : (activeRole === 'employer' ? 'Login as Employer' : 'Login as Worker')}
+              {isLoggingIn ? 'Logging in...' : (activeRole === 'employer' ? 'Login as Employer' : 'Login as Worker')}
             </Button>
           </form>
         </Card>
