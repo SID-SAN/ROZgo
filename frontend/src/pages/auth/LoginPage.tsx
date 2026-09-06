@@ -152,9 +152,21 @@ export const LoginPage: React.FC = () => {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
-              <div className="p-3.5 rounded-2xl bg-red-50 dark:bg-red-950/40 text-red-700 dark:text-red-300 text-xs font-semibold border border-red-200 dark:border-red-900/60 flex items-center gap-2 animate-fadeIn">
-                <AlertCircle className="w-4 h-4 shrink-0 text-red-600 dark:text-red-400" />
-                <span>{error}</span>
+              <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-300 text-xs font-semibold border border-rose-200 dark:border-rose-900/60 flex flex-col gap-2 animate-fadeIn">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 dark:text-rose-400 mt-0.5" />
+                  <span className="leading-relaxed">{error}</span>
+                </div>
+                <div className="pt-2 border-t border-rose-200/60 dark:border-rose-900/40 flex items-center justify-between">
+                  <span className="text-[11px] text-neutral-500 dark:text-neutral-400">Need instant testing access?</span>
+                  <button
+                    type="button"
+                    onClick={activeRole === 'employer' ? handleEmployerLogin : handleWorkerLogin}
+                    className="text-xs font-bold text-rozgo-900 dark:text-rozgo-300 underline hover:opacity-80 cursor-pointer"
+                  >
+                    Enter in Demo Mode &rarr;
+                  </button>
+                </div>
               </div>
             )}
 
@@ -232,6 +244,18 @@ export const LoginPage: React.FC = () => {
             >
               {isLoggingIn ? 'Logging in...' : (activeRole === 'employer' ? 'Login as Employer' : 'Login as Worker')}
             </Button>
+
+            {/* Demo fallback button */}
+            <div className="pt-2 flex items-center justify-between text-xs text-neutral-500 dark:text-neutral-400">
+              <span>Quick testing?</span>
+              <button
+                type="button"
+                onClick={activeRole === 'employer' ? handleEmployerLogin : handleWorkerLogin}
+                className="font-bold text-rozgo-900 dark:text-rozgo-300 hover:underline cursor-pointer"
+              >
+                Instant One-Click Login &rarr;
+              </button>
+            </div>
           </form>
         </Card>
 

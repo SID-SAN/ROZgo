@@ -18,36 +18,69 @@ from app.utils.worker_id import generate_worker_id
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 @router.post("/login", response_model=AuthResponse)
 async def login_password(req: LoginPasswordRequest):
-    phone = req.phone.strip()
+    raw_phone = req.phone.strip()
     password = req.password.strip()
+
+    # Extract 10 digits and common formats
+    digits = "".join(filter(str.isdigit, raw_phone))
+    phone_10 = digits[-10:] if len(digits) >= 10 else digits
+    phone_with_prefix = f"+91 {phone_10}"
+    phone_compact = f"+91{phone_10}"
+    search_phones = list(set([phone_10, phone_with_prefix, phone_compact, raw_phone]))
 
     supabase = get_supabase_client()
     if not supabase:
         # Fallback demo login
-        token = create_access_token({"sub": phone, "role": "worker"})
+        token = create_access_token({"sub": phone_10, "role": "worker"})
         return AuthResponse(
             success=True,
             token=token,
             role="worker",
-            user={"phone": phone, "role": "worker"},
-            profile={"id": f"w-{phone[-4:]}", "name": "Worker Demo", "phone": phone}
+            user={"phone": phone_10, "role": "worker"},
+            profile={"id": f"w-{phone_10[-4:]}", "name": "Worker Demo", "phone": phone_10}
         )
 
     try:
-        res = supabase.table("users").select("*").eq("phone", phone).execute()
-        if not res.data:
-            raise HTTPException(status_code=401, detail="Invalid phone or password")
-        user = res.data[0]
-        stored_hash = user.get("password_hash")
-        if stored_hash and not verify_password(password, stored_hash):
-            raise HTTPException(status_code=401, detail="Invalid phone or password")
+        res = supabase.table("users").select("*").in_("phone", search_phones).execute()
+        user = None
+        role = "worker"
+        profile = None
 
-        role = user.get("role", "worker")
-        table = "worker_profiles" if role == "worker" else "employer_profiles"
-        prof_res = supabase.table(table).select("*").eq("phone", phone).execute()
-        profile = prof_res.data[0] if prof_res.data else {"phone": phone, "name": "User"}
+        if res.data and len(res.data) > 0:
+            user = res.data[0]
+            stored_hash = user.get("password_hash")
+            if stored_hash:
+                if not verify_password(password, stored_hash):
+                    raise HTTPException(status_code=401, detail="Invalid password. Please check and try again.")
+            else:
+                # Set password for OTP-registered user
+                try:
+                    new_hash = get_password_hash(password)
+                    supabase.table("users").update({"password_hash": new_hash}).eq("id", user["id"]).execute()
+                except Exception:
+                    pass
 
-        token = create_access_token({"sub": phone, "role": role, "user_id": user["id"]})
+            role = user.get("role", "worker")
+            table = "worker_profiles" if role == "worker" else "employer_profiles"
+            prof_res = supabase.table(table).select("*").in_("phone", search_phones).execute()
+            profile = prof_res.data[0] if prof_res.data else {"phone": phone_10, "name": user.get("name", "User")}
+        else:
+            # Fallback check in worker_profiles and employer_profiles
+            w_prof = supabase.table("worker_profiles").select("*").in_("phone", search_phones).execute()
+            e_prof = supabase.table("employer_profiles").select("*").in_("phone", search_phones).execute()
+
+            if w_prof.data and len(w_prof.data) > 0:
+                profile = w_prof.data[0]
+                role = "worker"
+                user = {"id": profile.get("id"), "phone": phone_10, "role": "worker"}
+            elif e_prof.data and len(e_prof.data) > 0:
+                profile = e_prof.data[0]
+                role = "employer"
+                user = {"id": profile.get("id"), "phone": phone_10, "role": "employer"}
+            else:
+                raise HTTPException(status_code=401, detail="Account not found. Please register to create an account.")
+
+        token = create_access_token({"sub": phone_10, "role": role, "user_id": user.get("id", str(uuid.uuid4()))})
         return AuthResponse(
             success=True,
             token=token,

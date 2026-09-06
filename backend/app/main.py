@@ -21,9 +21,8 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# CORS configuration to allow requests from the frontend without restrictions
+# CORS configuration to allow requests from Vercel, localhost, and custom domains
 origins = [
-    "*",
     "http://localhost:5173",
     "http://localhost:3000",
     "http://127.0.0.1:5173",
@@ -33,10 +32,12 @@ if settings.CORS_ORIGIN and settings.CORS_ORIGIN != "*":
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows any origin for maximum frontend compatibility
+    allow_origins=origins if origins else ["*"],
+    allow_origin_regex=r"^https?:\/\/.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Healthcheck endpoints

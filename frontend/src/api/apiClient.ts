@@ -3,7 +3,20 @@
  * Clean HTTP client supporting authentication tokens and easy backend integration.
  */
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
+const DEFAULT_API_URL = 'https://rozgo-backend.onrender.com/api/v1';
+
+const getNormalizedBaseUrl = (): string => {
+  let envUrl = (import.meta.env.VITE_API_BASE_URL || DEFAULT_API_URL).trim();
+  // Strip trailing slashes
+  envUrl = envUrl.replace(/\/+$/, '');
+  // If user provided http(s)://domain without /api/v1, append it
+  if (envUrl.startsWith('http') && !envUrl.endsWith('/api/v1')) {
+    envUrl = `${envUrl}/api/v1`;
+  }
+  return envUrl;
+};
+
+const BASE_URL = getNormalizedBaseUrl();
 
 export class ApiError extends Error {
   statusCode: number;
@@ -57,8 +70,8 @@ class ApiClient {
       const response = await fetch(`${BASE_URL}${endpoint}`, config);
 
       if (!response.ok) {
-        let errorMessage = 'Something went wrong. Please try again.';
-        let errorData = null;
+        let errorMessage = '';
+        let errorData: any = null;
         try {
           errorData = await response.json();
           if (errorData?.detail) {
@@ -67,12 +80,25 @@ class ApiClient {
             errorMessage = errorData.message;
           }
         } catch {
-          // Response was not JSON
+          // Response was not JSON (e.g. 404 or 502 HTML error)
+        }
+
+        if (!errorMessage) {
+          if (response.status === 401) {
+            errorMessage = 'Invalid mobile number or password.';
+          } else if (response.status === 404) {
+            errorMessage = `API endpoint not found (404) at ${BASE_URL}. If you are on Render, please check your service status.`;
+          } else if (response.status === 502 || response.status === 503) {
+            errorMessage = 'Backend is waking up on Render. Please wait 30 seconds and try again.';
+          } else if (response.status >= 500) {
+            errorMessage = `Backend server error (${response.status}). Please try again shortly.`;
+          } else {
+            errorMessage = `Request failed with status ${response.status}. Please try again.`;
+          }
         }
 
         if (response.status === 401) {
           this.setToken(null);
-          errorMessage = 'Your session has expired. Please log in again.';
         }
 
         throw new ApiError(errorMessage, response.status, errorData);
