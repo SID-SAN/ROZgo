@@ -8,10 +8,12 @@ import {
   EmployerHiringPreferences,
   EmployerVerificationDetails,
 } from '../types';
-import { MOCK_WORKERS } from '../data/mockWorkers';
-import { verificationQueueService } from '../services/verificationService';
+import { apiClient } from '../api/apiClient';
+import { verificationQueueService, generateSequentialWorkerId } from '../services/verificationService';
+import { authApi } from '../api/authApi';
 
 export interface EmployerRegistrationData {
+  password?: string;
   name: string;
   firstName?: string;
   lastName?: string;
@@ -47,12 +49,13 @@ interface AuthContextType {
   isLoggedIn: boolean;
   workerUser: WorkerProfile;
   employerUser: EmployerProfile;
-  loginAsWorker: (customPhone?: string) => void;
-  loginAsEmployer: (customPhone?: string) => void;
+  loginAsWorker: (phoneOrProfile?: string | WorkerProfile) => void;
+  loginAsEmployer: (phoneOrProfile?: string | EmployerProfile) => void;
   logout: () => void;
   registerWorker: (data: {
     name: string;
     phone: string;
+    password?: string;
     location: string;
     primarySkill: string;
     experienceYears: number;
@@ -72,7 +75,7 @@ interface AuthContextType {
     usualAvailability?: string[];
     availableToday?: boolean;
     avatar?: string;
-  }) => string; // returns generated labour number
+  }) => Promise<string>; // returns generated labour number
   updateWorkerProfile: (updates: Partial<WorkerProfile>) => void;
   submitWorkerVerification: (params: {
     method: WorkerProfile['verificationMethod'] extends undefined ? 'aadhaar' : NonNullable<WorkerProfile['verificationMethod']>;
@@ -85,8 +88,7 @@ interface AuthContextType {
   adminApproveWorker: (workerId: string, applicationId?: string) => string;
   adminRejectWorker: (workerId: string, reason: string, applicationId?: string) => void;
   adminRequestPhotoWorker: (workerId: string, reason: string, applicationId?: string) => void;
-  resetWorkerVerificationDemo: () => void;
-  registerEmployer: (data: EmployerRegistrationData) => string; // returns generated RZE-XXXXXX
+  registerEmployer: (data: EmployerRegistrationData) => Promise<string>; // returns generated RZE-XXXXXX
   updateEmployerProfile: (updates: Partial<EmployerProfile>) => void;
   submitEmployerVerification: (params: {
     identityType?: 'aadhaar' | 'driving_license' | 'voter_id' | 'pan';
@@ -98,146 +100,79 @@ interface AuthContextType {
   }) => void;
 }
 
-const defaultWorker = MOCK_WORKERS[0]; // Amit Kumar (Plumber, RZG-849201)
+export const emptyWorkerProfile: WorkerProfile = {
+  id: '',
+  labourNumber: '',
+  name: '',
+  phone: '',
+  avatar: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=160&auto=format&fit=crop&q=80',
+  location: '',
+  distanceKm: 0,
+  primarySkill: 'worker',
+  skills: [],
+  experienceYears: 0,
+  dailyRate: 500,
+  hourlyRate: 80,
+  rating: 5.0,
+  completedJobsCount: 0,
+  isVerified: false,
+  verificationStatus: 'not_verified',
+  verifiedItems: {
+    mobile: false,
+    identity: false,
+    eshram: false,
+    certificate: false,
+  },
+  availability: 'Available Today',
+  joinedDate: 'Recently',
+  bio: '',
+  reviews: [],
+  portfolio: [],
+  certifications: [],
+  educationTraining: [],
+  benefits: [],
+  languagesList: [],
+  experienceBreakdown: [],
+  weeklySchedule: [],
+};
 
-const defaultEmployer: EmployerProfile = {
-  id: 'e1',
-  employerId: 'RZE-204821',
-  name: 'Rahul Sharma',
-  firstName: 'Rahul',
-  lastName: 'Sharma',
-  phone: '+91 98111 88234',
-  email: 'rahul.sharma@example.com',
-  dobOrAge: '38 years',
-  gender: 'Male',
-  avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=160&auto=format&fit=crop&q=80',
+export const emptyEmployerProfile: EmployerProfile = {
+  id: '',
+  employerId: '',
+  name: '',
+  firstName: '',
+  lastName: '',
+  phone: '',
+  avatar: '',
   employerType: 'individual',
-  hiringPurpose: 'Home maintenance and renovation',
-  location: 'Sushant Lok 1, Gurgaon',
-  workLocations: [
-    {
-      id: 'loc-1',
-      label: 'Primary Residence',
-      addressLine: 'Villa 42, Block B, Sushant Lok Phase 1',
-      landmark: 'Near Vyapar Kendra',
-      city: 'Gurgaon',
-      state: 'Haryana',
-      pincode: '122009',
-      isDefault: true,
-    },
-    {
-      id: 'loc-2',
-      label: 'Rental Apartment',
-      addressLine: 'Flat 702, Maple Heights, DLF Phase 4',
-      landmark: 'Opposite Galleria',
-      city: 'Gurgaon',
-      state: 'Haryana',
-      pincode: '122002',
-      isDefault: false,
-    },
-  ],
+  location: '',
+  workLocations: [],
   hiringPreferences: {
-    frequentlyNeededTrades: ['plumber', 'electrician', 'carpenter', 'painter'],
+    frequentlyNeededTrades: [],
     hiringFrequency: 'occasional',
     workersUsuallyNeeded: '1',
     preferredWorkTimes: ['Morning', 'Afternoon'],
   },
-  bio: 'Homeowner in Gurgaon seeking reliable, skilled tradespeople for residential maintenance. We value punctuality, fair direct payments, and transparent communication.',
+  bio: '',
   preferredCommunication: 'call',
-  languagesSpoken: ['Hindi', 'English', 'Punjabi'],
-  emergencyContactName: 'Pooja Sharma',
-  emergencyContactPhone: '+91 98111 77332',
-  memberSince: 'January 2024',
-  totalBookings: 14,
-  rating: 4.9,
+  languagesSpoken: [],
+  memberSince: '',
+  totalBookings: 0,
+  rating: 5.0,
   ratingBreakdown: {
-    professionalism: 4.9,
-    clarityOfScope: 4.8,
+    professionalism: 5.0,
+    clarityOfScope: 5.0,
     paymentReliability: 5.0,
-    workplaceSafety: 4.9,
+    workplaceSafety: 5.0,
   },
-  reviews: [
-    {
-      id: 'rev-1',
-      workerName: 'Amit Kumar',
-      workerSkill: 'Plumber',
-      workerLabourId: 'RZG-849201',
-      rating: 5,
-      comment: 'Excellent customer. Rahul ji explained the bathroom piping leakage clearly over call. Paid the agreed wage immediately upon completion.',
-      date: '18 Aug 2024',
-      jobTitle: 'Bathroom Pipeline & Flush Valve Replacement',
-    },
-    {
-      id: 'rev-2',
-      workerName: 'Rajesh Verma',
-      workerSkill: 'Electrician',
-      workerLabourId: 'RZG-419032',
-      rating: 5,
-      comment: 'Very polite family, gave tea and provided all materials. Fair wage agreement and prompt direct UPI payment.',
-      date: '2 Jul 2024',
-      jobTitle: 'MCB Trip & Balcony Light Wiring',
-    },
-    {
-      id: 'rev-3',
-      workerName: 'Sanjay Mistri',
-      workerSkill: 'Carpenter',
-      workerLabourId: 'RZG-620194',
-      rating: 4.8,
-      comment: 'Straightforward work requirements, respectful environment. Will be happy to work again.',
-      date: '14 May 2024',
-      jobTitle: 'Modular Wardrobe Hinge Repair',
-    },
-  ],
-  completedBookings: [
-    {
-      id: 'cb-1',
-      bookingNumber: 'RZG-BK-8102',
-      workerId: 'w1',
-      workerName: 'Amit Kumar',
-      workerTrade: 'plumber',
-      workerLabourId: 'RZG-849201',
-      workerPhone: '+91 98765 43210',
-      avatar: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=160&auto=format&fit=crop&q=80',
-      completedDate: '18 Aug 2024',
-      wagePaid: 850,
-      location: 'Sushant Lok 1, Gurgaon',
-    },
-    {
-      id: 'cb-2',
-      bookingNumber: 'RZG-BK-7491',
-      workerId: 'w2',
-      workerName: 'Rajesh Verma',
-      workerTrade: 'electrician',
-      workerLabourId: 'RZG-419032',
-      workerPhone: '+91 98765 43211',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=160&auto=format&fit=crop&q=80',
-      completedDate: '2 Jul 2024',
-      wagePaid: 700,
-      location: 'Sushant Lok 1, Gurgaon',
-    },
-    {
-      id: 'cb-3',
-      bookingNumber: 'RZG-BK-6302',
-      workerId: 'w3',
-      workerName: 'Sanjay Mistri',
-      workerTrade: 'carpenter',
-      workerLabourId: 'RZG-620194',
-      workerPhone: '+91 98765 43212',
-      avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=160&auto=format&fit=crop&q=80',
-      completedDate: '14 May 2024',
-      wagePaid: 1200,
-      location: 'DLF Phase 4, Gurgaon',
-    },
-  ],
-  isVerified: true,
-  verificationStatus: 'verified',
+  reviews: [],
+  completedBookings: [],
+  isVerified: false,
+  verificationStatus: 'not_verified',
   verificationDetails: {
-    mobileVerified: true,
-    identityVerified: true,
-    identityType: 'aadhaar',
-    identityMasked: 'XXXX XXXX 6821',
-    status: 'verified',
-    submittedAt: '15 Jan 2024',
+    mobileVerified: false,
+    identityVerified: false,
+    status: 'not_verified',
   },
 };
 
@@ -257,12 +192,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const saved = localStorage.getItem('rozgo_worker_profile');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          return { ...emptyWorkerProfile, ...parsed };
+        }
       } catch {
         // fallback
       }
     }
-    return defaultWorker;
+    return emptyWorkerProfile;
   });
 
   const [employerUser, setEmployerUser] = useState<EmployerProfile>(() => {
@@ -270,22 +208,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        return {
-          ...defaultEmployer,
-          ...parsed,
-          employerId: parsed.employerId || defaultEmployer.employerId,
-          ratingBreakdown: parsed.ratingBreakdown || defaultEmployer.ratingBreakdown,
-          workLocations: parsed.workLocations && parsed.workLocations.length > 0 ? parsed.workLocations : defaultEmployer.workLocations,
-          hiringPreferences: parsed.hiringPreferences || defaultEmployer.hiringPreferences,
-          completedBookings: parsed.completedBookings || defaultEmployer.completedBookings,
-          reviews: parsed.reviews || defaultEmployer.reviews,
-        };
+        if (parsed && typeof parsed === 'object') {
+          return { ...emptyEmployerProfile, ...parsed };
+        }
       } catch {
         // fallback
       }
     }
-    return defaultEmployer;
+    return emptyEmployerProfile;
   });
+
+  // Sync profile data from backend on load
+  useEffect(() => {
+    async function syncSessionWithBackend() {
+      try {
+        const token = localStorage.getItem('rozgo_auth_token');
+        if (!token) return;
+        const res = await apiClient.get<any>('/auth/me');
+        if (res && res.profile) {
+          if (res.user?.role === 'worker') {
+            setWorkerUser((prev) => ({
+              ...emptyWorkerProfile,
+              ...prev,
+              ...res.profile,
+              labourNumber: res.profile.labour_no || res.profile.labourNo || res.profile.labourNumber || res.profile.id,
+              primarySkill: res.profile.primary_skill || res.profile.primarySkill || prev.primarySkill,
+              skills: res.profile.skills || prev.skills,
+              experienceYears: res.profile.experience_years ?? res.profile.experienceYears ?? prev.experienceYears,
+              rating: res.profile.rating ?? prev.rating,
+              reviewsCount: res.profile.reviews_count ?? prev.reviewsCount,
+              isVerified: res.profile.verification_status === 'verified',
+              verificationStatus: res.profile.verification_status || prev.verificationStatus,
+            }));
+          } else {
+            setEmployerUser((prev) => ({
+              ...emptyEmployerProfile,
+              ...prev,
+              ...res.profile,
+              employerId: res.profile.id || prev.employerId,
+              isVerified: res.profile.isVerified || false,
+            }));
+          }
+        }
+      } catch (err) {
+        console.warn('Session sync notice:', err);
+      }
+    }
+    syncSessionWithBackend();
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('rozgo_role', role);
@@ -296,40 +266,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [isLoggedIn]);
 
   useEffect(() => {
-    localStorage.setItem('rozgo_worker_profile', JSON.stringify(workerUser));
+    if (workerUser && workerUser.id) {
+      localStorage.setItem('rozgo_worker_profile', JSON.stringify(workerUser));
+    }
   }, [workerUser]);
 
   useEffect(() => {
-    localStorage.setItem('rozgo_employer_profile', JSON.stringify(employerUser));
+    if (employerUser && employerUser.id) {
+      localStorage.setItem('rozgo_employer_profile', JSON.stringify(employerUser));
+    }
   }, [employerUser]);
 
   const setRole = (newRole: UserRole) => {
     setRoleState(newRole);
   };
 
-  const loginAsWorker = (phone?: string) => {
+  const loginAsWorker = (phoneOrProfile?: string | WorkerProfile) => {
     setIsLoggedIn(true);
     setRoleState('worker');
-    if (phone) {
-      setWorkerUser((prev) => ({ ...prev, phone }));
+    if (typeof phoneOrProfile === 'string') {
+      setWorkerUser((prev) => ({ ...prev, phone: phoneOrProfile }));
+    } else if (phoneOrProfile) {
+      setWorkerUser(phoneOrProfile);
     }
   };
 
-  const loginAsEmployer = (phone?: string) => {
+  const loginAsEmployer = (phoneOrProfile?: string | EmployerProfile) => {
     setIsLoggedIn(true);
     setRoleState('employer');
-    if (phone) {
-      setEmployerUser((prev) => ({ ...prev, phone }));
+    if (typeof phoneOrProfile === 'string') {
+      setEmployerUser((prev) => ({ ...prev, phone: phoneOrProfile }));
+    } else if (phoneOrProfile) {
+      setEmployerUser(phoneOrProfile);
     }
   };
 
   const logout = () => {
+    localStorage.removeItem('rozgo_auth_token');
+    localStorage.removeItem('rozgo_worker_profile');
+    localStorage.removeItem('rozgo_employer_profile');
     setIsLoggedIn(false);
+    setWorkerUser(emptyWorkerProfile);
+    setEmployerUser(emptyEmployerProfile);
   };
 
-  const registerWorker = (data: {
+  const registerWorker = async (data: {
     name: string;
     phone: string;
+    password?: string;
     location: string;
     primarySkill: string;
     experienceYears: number;
@@ -349,15 +333,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     usualAvailability?: string[];
     availableToday?: boolean;
     avatar?: string;
-  }): string => {
-    // Generate unique ROZGO Labour Number: RZG-XXXXXX
-    const randomDigits = Math.floor(100000 + Math.random() * 900000);
-    const labourNumber = `RZG-${randomDigits}`;
+  }): Promise<string> => {
+    // Generate unique sequential ROZGO Labour Number: {state}-{city}-{0001}
+    const labourNumber = generateSequentialWorkerId(data.state, data.city, data.location);
 
     const newProfile: WorkerProfile = {
-      id: `w-${Date.now()}`,
-      // ROZGO number will only be issued once verification is complete
-      labourNumber: undefined,
+      id: labourNumber,
+      // Official sequential worker labour number
+      labourNumber,
       name: data.name || 'Worker',
       phone: data.phone || '+91 98765 43210',
       avatar: data.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=160&auto=format&fit=crop&q=80',
@@ -380,6 +363,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       joinedDate: 'Just now',
       bio: data.experienceDescription || `Professional ${data.primarySkill || 'worker'} registered on ROZGO.`,
       reviews: [],
+      portfolio: [],
+      certifications: [],
+      educationTraining: [],
+      benefits: [],
+      languagesList: [],
+      experienceBreakdown: [],
+      weeklySchedule: [],
       dobOrAge: data.dobOrAge,
       gender: data.gender,
       preferredLanguage: data.preferredLanguage,
@@ -396,6 +386,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       availableToday: data.availableToday,
     };
 
+    // Push to backend
+    const res = await authApi.register({
+      phone: data.phone,
+      password: data.password,
+      role: 'worker',
+      name: data.name,
+      location: data.location,
+      primary_skill: data.primarySkill,
+      experience_years: data.experienceYears,
+    });
+
+    if (res.profile && res.profile.id) {
+       newProfile.id = res.profile.id;
+    }
+
     setWorkerUser(newProfile);
     setIsLoggedIn(true);
     setRoleState('worker');
@@ -404,6 +409,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateWorkerProfile = (updates: Partial<WorkerProfile>) => {
     setWorkerUser((prev) => ({ ...prev, ...updates }));
+    apiClient.put('/workers/profile', updates).catch(err => console.error("Error updating worker profile in DB:", err));
   };
 
   const submitWorkerVerification = (params: {
@@ -432,7 +438,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       year: 'numeric',
     });
 
-    const labourNo = workerUser.labourNumber || `RZG-${Math.floor(100000 + Math.random() * 900000)}`;
+    const labourNo = workerUser.labourNumber || generateSequentialWorkerId(workerUser.state, workerUser.city, workerUser.location);
 
     setWorkerUser((prev) => ({
       ...prev,
@@ -464,9 +470,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const adminApproveWorker = (workerId: string, applicationId?: string): string => {
     const res = applicationId
       ? verificationQueueService.approveApplication(applicationId)
-      : { success: true, labourNumber: `RZG-${Math.floor(100000 + Math.random() * 900000)}` };
+      : { success: true, labourNumber: generateSequentialWorkerId() };
 
-    const labourNo = res.labourNumber || `RZG-${Math.floor(100000 + Math.random() * 900000)}`;
+    const labourNo = res.labourNumber || generateSequentialWorkerId();
 
     setWorkerUser((prev) => {
       if (prev.id === workerId || workerId === 'current' || prev.name === 'Amit Kumar') {
@@ -529,25 +535,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  const resetWorkerVerificationDemo = () => {
-    setWorkerUser((prev) => ({
-      ...prev,
-      isVerified: false,
-      verificationStatus: 'not_verified',
-      labourNumber: undefined,
-      verificationMethod: undefined,
-      verificationSubmittedAt: undefined,
-      verificationDetails: undefined,
-      verifiedItems: {
-        mobile: true,
-        identity: false,
-        eshram: false,
-        certificate: false,
-      },
-    }));
-  };
-
-  const registerEmployer = (data: EmployerRegistrationData): string => {
+  const registerEmployer = async (data: EmployerRegistrationData): Promise<string> => {
     // Generate unique ROZGO Employer ID: RZE-XXXXXX
     const randomDigits = Math.floor(100000 + Math.random() * 900000);
     const employerId = `RZE-${randomDigits}`;
@@ -573,19 +561,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       name: fullName,
       firstName: data.firstName || fullName.split(' ')[0] || '',
       lastName: data.lastName || fullName.split(' ').slice(1).join(' ') || '',
-      phone: data.phone || '+91 98111 88234',
+      phone: data.phone || '+91 98111 00000',
       email: data.email,
       dobOrAge: data.dobOrAge,
       gender: data.gender,
-      avatar: data.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=160&auto=format&fit=crop&q=80',
+      avatar: data.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=160&auto=format&fit=crop&q=80',
       employerType: data.employerType || 'individual',
-      hiringPurpose: data.hiringPurpose,
-      businessName: data.businessName,
-      businessType: data.businessType,
-      employeeCount: data.employeeCount,
-      designation: data.designation,
-      contractorWorkTypes: data.contractorWorkTypes,
-      typicalWorkersNeeded: data.typicalWorkersNeeded,
       propertyUnitsCount: data.propertyUnitsCount,
       propertyType: data.propertyType,
       location: data.location || 'Gurgaon, Haryana',
@@ -639,6 +620,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       },
     };
 
+    // Push to backend
+    const res = await authApi.register({
+      phone: data.phone || '',
+      password: data.password,
+      role: 'employer',
+      name: fullName,
+      location: data.location,
+      employer_type: data.employerType,
+      business_name: '',
+    });
+
+    if (res.profile && res.profile.id) {
+       newProfile.id = res.profile.id;
+    }
+
     setEmployerUser(newProfile);
     setIsLoggedIn(true);
     setRoleState('employer');
@@ -647,6 +643,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateEmployerProfile = (updates: Partial<EmployerProfile>) => {
     setEmployerUser((prev) => ({ ...prev, ...updates }));
+    apiClient.put('/employers/profile', updates).catch(err => console.error("Error updating employer profile in DB:", err));
   };
 
   const submitEmployerVerification = (params: {
@@ -700,7 +697,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         adminApproveWorker,
         adminRejectWorker,
         adminRequestPhotoWorker,
-        resetWorkerVerificationDemo,
         registerEmployer,
         updateEmployerProfile,
         submitEmployerVerification,

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
   ShieldCheck,
@@ -21,35 +21,50 @@ import {
   Heart,
   UserCheck
 } from 'lucide-react';
-import { MOCK_WORKERS } from '../../data/mockWorkers';
 import { useAuth } from '../../context/AuthContext';
 import { useBooking } from '../../context/BookingContext';
 import { WorkerProfile } from '../../types';
 import { VerifiedBadgeModal } from '../../components/profile/VerifiedBadgeModal';
 import { ShareProfileModal } from '../../components/profile/ShareProfileModal';
+import { apiClient } from '../../api/apiClient';
 
 export const PublicWorkerProfilePage: React.FC = () => {
   const { labourId } = useParams<{ labourId: string }>();
   const navigate = useNavigate();
   const { workerUser, role } = useAuth();
-  const { addWorkerByLabourNumber } = useBooking();
+  const { addWorkerByLabourNumber, availableWorkersList } = useBooking();
+  const [fetchedWorker, setFetchedWorker] = useState<WorkerProfile | null>(null);
+
+  useEffect(() => {
+    if (!labourId) return;
+    const cleanId = labourId.trim();
+    apiClient.get<any>(`/workers/labour-no/${cleanId}`)
+      .then(res => {
+        if (res && res.id) setFetchedWorker(res);
+      })
+      .catch(() => {
+        apiClient.get<any>(`/workers/${cleanId}`)
+          .then(r => { if (r && r.id) setFetchedWorker(r); })
+          .catch(() => {});
+      });
+  }, [labourId]);
 
   // Look up worker by labourNumber or id
   const worker: WorkerProfile = useMemo(() => {
+    if (fetchedWorker) return fetchedWorker;
     if (!labourId) return workerUser;
     const cleanId = labourId.trim().toUpperCase();
-    const found = MOCK_WORKERS.find(
+    const found = availableWorkersList.find(
       (w) =>
         (w.labourNumber && w.labourNumber.toUpperCase() === cleanId) ||
-        w.id.toUpperCase() === cleanId
+        (w.id && w.id.toUpperCase() === cleanId)
     );
     if (found) return found;
     if (workerUser.labourNumber?.toUpperCase() === cleanId || workerUser.id.toUpperCase() === cleanId) {
       return workerUser;
     }
-    // Default fallback to first mock worker
-    return MOCK_WORKERS[0];
-  }, [labourId, workerUser]);
+    return availableWorkersList[0] || workerUser;
+  }, [labourId, workerUser, availableWorkersList, fetchedWorker]);
 
   // Modals
   const [isVerifiedModalOpen, setIsVerifiedModalOpen] = useState(false);

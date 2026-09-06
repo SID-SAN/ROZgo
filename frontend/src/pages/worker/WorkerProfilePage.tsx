@@ -137,7 +137,7 @@ export const WorkerProfilePage: React.FC = () => {
 
           {/* Quick Availability Status positioned near the Worker Name Card */}
           <AvailabilityCard
-            schedule={workerUser.weeklySchedule}
+            schedule={workerUser.weeklySchedule || []}
             onUpdateSchedule={(newSch) => {
               const isTodayAvail = newSch.find((s) => s.day.toLowerCase() === 'today')?.status === 'available';
               updateWorkerProfile({ 
@@ -230,8 +230,8 @@ export const WorkerProfilePage: React.FC = () => {
                   maxDistanceKm={workerUser.maxTravelDistanceKm || workerUser.serviceRadiusKm || 10}
                 />
                 <EducationLanguagesCard
-                  education={workerUser.educationTraining}
-                  languages={workerUser.languagesKnown || workerUser.languagesList}
+                  education={workerUser.educationTraining || []}
+                  languages={workerUser.languagesKnown || workerUser.languagesList || []}
                 />
               </div>
             </div>
@@ -266,29 +266,29 @@ export const WorkerProfilePage: React.FC = () => {
               {/* Left Column: Skills & Experience */}
               <div className="lg:col-span-6 space-y-6">
                 <SkillsSection
-                  skills={workerUser.skills}
+                  skills={workerUser.skills || []}
                   onAddSkill={(newSkill) => {
-                    if (!workerUser.skills.includes(newSkill)) {
-                      updateWorkerProfile({ skills: [...workerUser.skills, newSkill] });
+                    if (!(workerUser.skills || []).includes(newSkill)) {
+                      updateWorkerProfile({ skills: [...(workerUser.skills || []), newSkill] });
                       showToast(`Skill "${newSkill}" added!`);
                     }
                   }}
                   onRemoveSkill={(remSkill) => {
-                    updateWorkerProfile({ skills: workerUser.skills.filter((s) => s !== remSkill) });
+                    updateWorkerProfile({ skills: (workerUser.skills || []).filter((s) => s !== remSkill) });
                     showToast(`Skill removed.`);
                   }}
                 />
                 <ExperienceSection
-                  totalYears={workerUser.experienceYears}
-                  breakdown={workerUser.experienceBreakdown}
+                  totalYears={workerUser.experienceYears || 0}
+                  breakdown={workerUser.experienceBreakdown || []}
                 />
               </div>
 
               {/* Right Column: Portfolio & Certifications */}
               <div className="lg:col-span-6 space-y-6">
                 <WorkPortfolioSection
-                  portfolio={workerUser.portfolio}
-                  onAddPortfolioItem={(item) => {
+                  portfolio={workerUser.portfolio || []}
+                  onAddPortfolio={(item) => {
                     updateWorkerProfile({
                       portfolio: [...(workerUser.portfolio || []), item],
                     });
@@ -296,7 +296,7 @@ export const WorkerProfilePage: React.FC = () => {
                   }}
                 />
                 <CertificationsSection
-                  certifications={workerUser.certifications}
+                  certifications={workerUser.certifications || []}
                   onAddCertificate={(cert) => {
                     updateWorkerProfile({
                       certifications: [...(workerUser.certifications || []), cert],
@@ -347,7 +347,7 @@ export const WorkerProfilePage: React.FC = () => {
               {/* Right Column: Skill India & Worker Benefits */}
               <div className="lg:col-span-6 space-y-6">
                 <SkillIndiaCard primarySkill={workerUser.primarySkill} />
-                <WorkerBenefitsCard benefits={workerUser.benefits} />
+                <WorkerBenefitsCard benefits={workerUser.benefits || []} />
               </div>
             </div>
           </section>

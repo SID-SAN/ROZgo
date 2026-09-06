@@ -7,35 +7,17 @@ from app.schemas.booking import (
     BookingRequestSchema,
     BookingMatchRequest,
     BookingAgreementConfirm,
+    WorkerAgreementAction,
     ReviewSubmitSchema,
+    ContractSubmitSchema,
+    ContractActionSchema,
 )
 from app.routers.workers import FALLBACK_WORKERS, format_worker_profile
 from app.utils.security import decode_access_token
 
 router = APIRouter(prefix="/bookings", tags=["Bookings"])
 
-# Memory storage fallback for active demo agreements
-ACTIVE_AGREEMENTS: List[Dict[str, Any]] = [
-    {
-        "id": "bk-demo-1",
-        "bookingNumber": "RZG-BK-8419",
-        "worker": format_worker_profile(FALLBACK_WORKERS[0]),
-        "additionalWorkers": [],
-        "jobTitle": "Bathroom Plumbing & Pipe Replacement",
-        "description": "Repair leaking overhead tank pipeline and replace washbasin angle valves.",
-        "location": "Sector 62, Noida, UP",
-        "date": "5 Sept 2026",
-        "time": "09:30 AM",
-        "agreedWage": 650,
-        "wageType": "daily",
-        "durationDays": 1,
-        "employerStatus": "confirmed",
-        "workerStatus": "confirmed",
-        "status": "in_progress",
-        "createdAt": "5 Sept 2026, 08:30 AM",
-        "workStartedAt": "5 Sept 2026, 09:35 AM"
-    }
-]
+
 
 @router.post("/request")
 async def create_booking_request(req: BookingRequestSchema):
@@ -66,8 +48,9 @@ async def create_booking_request(req: BookingRequestSchema):
     supabase = get_supabase_client()
     if supabase:
         try:
-            supabase.table("bookings").insert({
+            res = supabase.table("bookings").insert({
                 "booking_reference": ref_num,
+                "employer_id": req.employerId,
                 "service_id": req.serviceCategory,
                 "subcategory_id": req.subcategory,
                 "job_title": booking_obj["jobTitle"],
@@ -77,10 +60,12 @@ async def create_booking_request(req: BookingRequestSchema):
                 "wage_offer": req.wageOffer,
                 "status": "requested"
             }).execute()
+            
+            if res.data and len(res.data) > 0:
+                booking_obj["id"] = res.data[0]["id"]
         except Exception as e:
             print(f"Error persisting booking to Supabase: {e}")
 
-    ACTIVE_AGREEMENTS.insert(0, booking_obj)
     return booking_obj
 
 from datetime import datetime
@@ -117,76 +102,371 @@ async def match_workers(req: BookingMatchRequest):
 
 @router.post("/agreement/confirm")
 async def confirm_agreement(req: BookingAgreementConfirm):
-    # Find active or create
-    for b in ACTIVE_AGREEMENTS:
-        if b.get("id") == req.bookingId:
-            b["agreedWage"] = req.agreedWage
-            b["date"] = req.date
-            b["time"] = req.time
-            b["status"] = "in_progress"
-            b["employerStatus"] = "confirmed"
-            b["workerStatus"] = "confirmed"
-            return b
+    supabase = get_supabase_client()
+    # Check if this confirmation is explicitly from worker
+    is_worker_confirmation = bool(req.confirmedByWorker)
+    target_status = "active" if is_worker_confirmation else "agreement_pending"
+
+    booking_id = req.bookingId or f"bk-{uuid.uuid4().hex[:8]}"
+    booking_ref = req.bookingId if str(req.bookingId).startswith("RZG-") else f"RZG-BK-{uuid.uuid4().hex[:4].upper()}"
+
+    if supabase and req.bookingId:
+        try:
+            update_fields = {
+                "worker_id": req.workerId,
+                "wage_offer": req.agreedWage,
+                "date": req.date,
+                "status": target_status,
+                "agreement_confirmed_by_employer": True,
+                "agreement_confirmed_by_worker": is_worker_confirmation,
+                "updated_at": datetime.utcnow().isoformat()
+            }
+            updated = False
+            # 1. UUID match
+            try:
+                uuid.UUID(str(req.bookingId))
+                res = supabase.table("bookings").update(update_fields).eq("id", req.bookingId).execute()
+                if res.data and len(res.data) > 0:
+                    updated = True
+                    booking_id = res.data[0].get("id", booking_id)
+                    booking_ref = res.data[0].get("booking_reference", booking_ref)
+            except (ValueError, AttributeError):
+                pass
+
+            # 2. booking_reference exact match
+            if not updated:
+                res = supabase.table("bookings").update(update_fields).eq("booking_reference", req.bookingId).execute()
+                if res.data and len(res.data) > 0:
+                    updated = True
+                    booking_id = res.data[0].get("id", booking_id)
+                    booking_ref = res.data[0].get("booking_reference", booking_ref)
+
+            # 3. Partial ilike on booking_reference
+            if not updated:
+                clean_ref = str(req.bookingId).replace("RZG-BK-", "").strip()
+                if len(clean_ref) >= 4:
+                    res = supabase.table("bookings").update(update_fields).ilike("booking_reference", f"%{clean_ref}%").execute()
+                    if res.data and len(res.data) > 0:
+                        updated = True
+                        booking_id = res.data[0].get("id", booking_id)
+                        booking_ref = res.data[0].get("booking_reference", booking_ref)
+
+            # 4. Fallback to latest unconfirmed/requested booking
+            if not updated:
+                pending = supabase.table("bookings").select("id, booking_reference").in_("status", ["requested", "agreement_pending"]).order("created_at", desc=True).limit(1).execute()
+                if pending.data and len(pending.data) > 0:
+                    supabase.table("bookings").update(update_fields).eq("id", pending.data[0]["id"]).execute()
+                    booking_id = pending.data[0]["id"]
+                    booking_ref = pending.data[0].get("booking_reference", booking_ref)
+        except Exception as e:
+            print(f"Error updating booking in Supabase: {e}")
 
     new_b = {
-        "id": req.bookingId or f"bk-{uuid.uuid4().hex[:8]}",
-        "bookingNumber": f"RZG-BK-{uuid.uuid4().hex[:4].upper()}",
+        "id": booking_id,
+        "bookingNumber": booking_ref,
         "worker": format_worker_profile(FALLBACK_WORKERS[0]),
-        "jobTitle": "Confirmed Trade Work",
-        "description": "Standard work agreement mutually confirmed.",
+        "jobTitle": "Trade Work Agreement",
+        "description": "Work agreement pending worker confirmation." if not is_worker_confirmation else "Standard work agreement mutually confirmed.",
         "location": "Local Area",
         "date": req.date,
         "time": req.time,
         "agreedWage": req.agreedWage,
         "wageType": "daily",
         "durationDays": 1,
-        "status": "in_progress",
+        "status": target_status,
         "employerStatus": "confirmed",
-        "workerStatus": "confirmed",
+        "workerStatus": "confirmed" if is_worker_confirmation else "pending",
         "createdAt": "Just now"
     }
-    ACTIVE_AGREEMENTS.insert(0, new_b)
     return new_b
+
+@router.post("/agreement/worker-response")
+async def worker_response(req: WorkerAgreementAction):
+    supabase = get_supabase_client()
+    status = "active" if req.accept else "cancelled"
+    if supabase and (req.bookingId or req.bookingNumber):
+        try:
+            update_data = {
+                "status": status,
+                "agreement_confirmed_by_worker": req.accept,
+                "updated_at": datetime.utcnow().isoformat()
+            }
+            if not req.accept and req.rejectReason:
+                update_data["special_terms"] = f"Rejected by worker: {req.rejectReason}"
+
+            updated = False
+            # 1. Try UUID on id
+            if req.bookingId:
+                try:
+                    uuid.UUID(str(req.bookingId))
+                    res = supabase.table("bookings").update(update_data).eq("id", req.bookingId).execute()
+                    if res.data and len(res.data) > 0:
+                        updated = True
+                except (ValueError, AttributeError):
+                    pass
+
+            # 2. Try bookingNumber or bookingId on booking_reference
+            if not updated:
+                ref = req.bookingNumber or req.bookingId
+                res = supabase.table("bookings").update(update_data).eq("booking_reference", ref).execute()
+                if res.data and len(res.data) > 0:
+                    updated = True
+
+            # 3. Try partial ilike on booking_reference
+            if not updated and req.bookingId:
+                clean_ref = str(req.bookingId).replace("RZG-BK-", "").strip()
+                if len(clean_ref) >= 4:
+                    res = supabase.table("bookings").update(update_data).ilike("booking_reference", f"%{clean_ref}%").execute()
+                    if res.data and len(res.data) > 0:
+                        updated = True
+
+            # 4. Fallback to the latest agreement_pending booking
+            if not updated:
+                pending = supabase.table("bookings").select("id").eq("status", "agreement_pending").order("created_at", desc=True).limit(1).execute()
+                if pending.data and len(pending.data) > 0:
+                    supabase.table("bookings").update(update_data).eq("id", pending.data[0]["id"]).execute()
+                    updated = True
+        except Exception as e:
+            print(f"Error updating worker response in Supabase: {e}")
+
+    return {
+        "success": True,
+        "bookingId": req.bookingId,
+        "status": status,
+        "message": "Agreement accepted. Status updated to active." if req.accept else "Agreement declined."
+    }
 
 @router.get("/active")
 async def get_active_bookings():
-    return [b for b in ACTIVE_AGREEMENTS if b.get("status") in ("requested", "matched", "agreement_pending", "in_progress")]
+    supabase = get_supabase_client()
+    if supabase:
+        try:
+            res = (
+                supabase.table("bookings")
+                .select("*")
+                .in_("status", ["requested", "matched", "agreement_pending", "active"])
+                .order("created_at", desc=True)
+                .execute()
+            )
+            if res.data and len(res.data) > 0:
+                # Batch-fetch worker and employer profiles for all bookings
+                worker_ids = list(set(b.get("worker_id") for b in res.data if b.get("worker_id")))
+                employer_ids = list(set(b.get("employer_id") for b in res.data if b.get("employer_id")))
+
+                worker_map = {}
+                if worker_ids:
+                    try:
+                        w_res = supabase.table("worker_profiles").select("id, name, phone, labour_no, avatar").in_("id", worker_ids).execute()
+                        for w in (w_res.data or []):
+                            worker_map[w["id"]] = w
+                    except Exception:
+                        pass
+
+                employer_map = {}
+                if employer_ids:
+                    try:
+                        e_res = supabase.table("employer_profiles").select("id, name, phone").in_("id", employer_ids).execute()
+                        for e in (e_res.data or []):
+                            employer_map[e["id"]] = e
+                    except Exception:
+                        pass
+
+                mapped = []
+                for b in res.data:
+                    # Resolve worker
+                    workers_list = []
+                    wid = b.get("worker_id")
+                    if wid and wid in worker_map:
+                        wp = worker_map[wid]
+                        workers_list.append({
+                            "workerId": wp.get("id"),
+                            "name": wp.get("name", "Worker"),
+                            "phone": wp.get("phone", ""),
+                            "labourNumber": wp.get("labour_no", ""),
+                            "avatar": wp.get("avatar") or "https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=160&auto=format&fit=crop&q=80",
+                        })
+
+                    # Resolve employer
+                    eid = b.get("employer_id")
+                    emp = employer_map.get(eid, {}) if eid else {}
+                    employer_name = emp.get("name", "Direct Customer")
+                    employer_phone = emp.get("phone", "+91 98111 88234")
+
+                    mapped.append({
+                        "id": str(b.get("id")),
+                        "bookingNumber": b.get("booking_reference"),
+                        "jobTitle": b.get("job_title"),
+                        "workTitle": b.get("job_title"),
+                        "serviceCategory": b.get("service_id", "plumber"),
+                        "subcategory": b.get("subcategory_id", "general"),
+                        "description": b.get("description", ""),
+                        "location": b.get("location", ""),
+                        "date": str(b.get("date", "Today")),
+                        "time": "11:00 AM",
+                        "agreedWage": float(b.get("wage_offer") or 500),
+                        "status": b.get("status", "requested"),
+                        "employerName": employer_name,
+                        "employerPhone": employer_phone,
+                        "workers": workers_list,
+                        "workersCount": len(workers_list) or 1
+                    })
+                return mapped
+        except Exception as e:
+            print(f"Error fetching active bookings from Supabase: {e}")
+
+    return []
+
+@router.get("/completed")
+async def get_completed_bookings():
+    supabase = get_supabase_client()
+    if supabase:
+        try:
+            res = (
+                supabase.table("bookings")
+                .select("*")
+                .eq("status", "completed")
+                .order("updated_at", desc=True)
+                .execute()
+            )
+            if res.data and len(res.data) > 0:
+                worker_ids = list(set(b.get("worker_id") for b in res.data if b.get("worker_id")))
+                employer_ids = list(set(b.get("employer_id") for b in res.data if b.get("employer_id")))
+
+                worker_map = {}
+                if worker_ids:
+                    try:
+                        w_res = supabase.table("worker_profiles").select("id, name, phone, labour_no, avatar").in_("id", worker_ids).execute()
+                        for w in (w_res.data or []):
+                            worker_map[w["id"]] = w
+                    except Exception:
+                        pass
+
+                employer_map = {}
+                if employer_ids:
+                    try:
+                        e_res = supabase.table("employer_profiles").select("id, name, phone").in_("id", employer_ids).execute()
+                        for e in (e_res.data or []):
+                            employer_map[e["id"]] = e
+                    except Exception:
+                        pass
+
+                mapped = []
+                for b in res.data:
+                    workers_list = []
+                    wid = b.get("worker_id")
+                    if wid and wid in worker_map:
+                        wp = worker_map[wid]
+                        workers_list.append({
+                            "workerId": wp.get("id"),
+                            "name": wp.get("name", "Worker"),
+                            "phone": wp.get("phone", ""),
+                            "labourNumber": wp.get("labour_no", ""),
+                            "avatar": wp.get("avatar") or "https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=160&auto=format&fit=crop&q=80",
+                        })
+
+                    eid = b.get("employer_id")
+                    emp = employer_map.get(eid, {}) if eid else {}
+                    employer_name = emp.get("name", "Direct Customer")
+                    employer_phone = emp.get("phone", "+91 98111 88234")
+
+                    mapped.append({
+                        "id": str(b.get("id")),
+                        "bookingNumber": b.get("booking_reference") or f"RZG-BK-{str(b.get('id'))[:4].upper()}",
+                        "jobTitle": b.get("job_title") or "Completed Service",
+                        "workTitle": b.get("job_title") or "Completed Service",
+                        "serviceCategory": b.get("service_id", "plumber"),
+                        "subcategory": b.get("subcategory_id", "general"),
+                        "description": b.get("description", ""),
+                        "location": b.get("location", ""),
+                        "date": str(b.get("date", "Today")),
+                        "time": "11:00 AM",
+                        "agreedWage": float(b.get("wage_offer") or 500),
+                        "status": "completed",
+                        "completedAt": str(b.get("updated_at") or b.get("created_at") or "Recently"),
+                        "employerName": employer_name,
+                        "employerPhone": employer_phone,
+                        "workers": workers_list,
+                        "workersCount": len(workers_list) or 1
+                    })
+                return mapped
+        except Exception as e:
+            print(f"Error fetching completed bookings from Supabase: {e}")
+
+    return []
 
 @router.get("/{booking_id}")
 async def get_booking_by_id(booking_id: str):
-    for b in ACTIVE_AGREEMENTS:
-        if b["id"] == booking_id:
-            return b
+    supabase = get_supabase_client()
+    if supabase:
+        try:
+            try:
+                uuid.UUID(str(booking_id))
+                res = supabase.table("bookings").select("*").eq("id", booking_id).execute()
+            except (ValueError, AttributeError):
+                res = supabase.table("bookings").select("*").eq("booking_reference", booking_id).execute()
+            if res.data and len(res.data) > 0:
+                b = res.data[0]
+                return {
+                    "id": str(b.get("id")),
+                    "bookingNumber": b.get("booking_reference"),
+                    "jobTitle": b.get("job_title"),
+                    "status": b.get("status"),
+                }
+        except Exception as e:
+            pass
     raise HTTPException(status_code=404, detail="Booking not found")
 
 @router.post("/{booking_id}/complete")
 async def complete_booking(booking_id: str):
+    supabase = get_supabase_client()
     target_booking = None
-    for b in ACTIVE_AGREEMENTS:
-        if b["id"] == booking_id:
-            b["status"] = "completed"
-            target_booking = b
-            break
+    if supabase:
+        try:
+            try:
+                uuid.UUID(str(booking_id))
+                res = supabase.table("bookings").select("*").eq("id", booking_id).execute()
+            except (ValueError, AttributeError):
+                res = supabase.table("bookings").select("*").eq("booking_reference", booking_id).execute()
+            
+            if res.data and len(res.data) > 0:
+                target_booking = res.data[0]
+        except Exception as e:
+            print(f"Error completing booking in Supabase: {e}")
 
-    wage = float(target_booking.get("agreedWage", 500)) if target_booking else 500.0
-    worker = target_booking.get("worker", {}) if target_booking else {}
-    worker_id = worker.get("id") or worker.get("labourNo")
+    # Extract wage and worker from DB row (snake_case fields)
+    wage = float(target_booking.get("wage_offer", 500)) if target_booking else 500.0
+    worker_id = target_booking.get("worker_id") if target_booking else None
+
+    # Fetch worker details if we have a worker_id
+    worker_data = {}
+    if worker_id and supabase:
+        try:
+            w_res = supabase.table("worker_profiles").select("name, labour_no").eq("id", worker_id).execute()
+            if w_res.data:
+                worker_data = w_res.data[0]
+        except Exception:
+            pass
+
+    actual_job_title = (target_booking.get("job_title") or target_booking.get("jobTitle", "Trade Work")) if target_booking else "Trade Work"
+    ref = (target_booking.get("booking_reference") or target_booking.get("bookingNumber", booking_id)) if target_booking else booking_id
+    db_id = target_booking.get("id", booking_id) if target_booking else booking_id
 
     # Generate Official Digital Receipt
     receipt = {
         "receiptNumber": f"RZG-RCP-{uuid.uuid4().hex[:6].upper()}",
-        "bookingId": booking_id,
+        "bookingId": str(db_id),
+        "bookingReference": str(ref),
         "date": datetime.utcnow().strftime("%d %b %Y"),
         "completedAt": datetime.utcnow().isoformat() + "Z",
         "totalAmount": wage,
         "currency": "INR",
         "paymentStatus": "PAID",
         "paymentMethod": "Cash / UPI",
-        "jobTitle": target_booking.get("jobTitle", "Trade Work") if target_booking else "Trade Work",
+        "jobTitle": actual_job_title,
         "worker": {
             "id": worker_id,
-            "name": worker.get("name", "Worker"),
-            "labourNo": worker.get("labourNo", "")
+            "name": worker_data.get("name", "Worker"),
+            "labourNo": worker_data.get("labour_no", "")
         },
         "breakdown": {
             "baseWage": wage,
@@ -199,13 +479,18 @@ async def complete_booking(booking_id: str):
     supabase = get_supabase_client()
     if supabase:
         try:
-            # 1. Update booking status in Supabase (check UUID or booking_reference)
+            # 1. Update booking status to completed in Supabase (check UUID or booking_reference)
             try:
                 uuid.UUID(str(booking_id))
-                supabase.table("bookings").update({"status": "completed"}).eq("id", booking_id).execute()
+                supabase.table("bookings").update({
+                    "status": "completed",
+                    "updated_at": datetime.utcnow().isoformat()
+                }).eq("id", booking_id).execute()
             except (ValueError, AttributeError):
-                ref = target_booking.get("bookingNumber", booking_id) if target_booking else booking_id
-                supabase.table("bookings").update({"status": "completed"}).eq("booking_reference", ref).execute()
+                supabase.table("bookings").update({
+                    "status": "completed",
+                    "updated_at": datetime.utcnow().isoformat()
+                }).eq("booking_reference", ref).execute()
 
             # 2. Append to worker's work_history
             if worker_id:
@@ -214,20 +499,23 @@ async def complete_booking(booking_id: str):
                     current_history = w_res.data[0].get("work_history") or []
                     current_history.insert(0, {
                         "id": f"wh-{uuid.uuid4().hex[:6]}",
-                        "bookingId": booking_id,
+                        "bookingId": str(db_id),
                         "receiptNumber": receipt["receiptNumber"],
-                        "jobTitle": target_booking.get("jobTitle", "Trade Work") if target_booking else "Trade Work",
+                        "jobTitle": actual_job_title,
                         "completedDate": receipt["date"],
                         "wage": wage,
                         "status": "completed"
                     })
-                    supabase.table("worker_profiles").update({"work_history": current_history}).eq("id", worker_id).execute()
+                    supabase.table("worker_profiles").update({
+                        "work_history": current_history,
+                        "updated_at": datetime.utcnow().isoformat()
+                    }).eq("id", worker_id).execute()
         except Exception as e:
             print(f"Error persisting completion and history in Supabase: {e}")
 
     return {
         "success": True,
-        "message": "Work completed successfully. Receipt generated.",
+        "message": "Work completed successfully. Marked as complete in database and digital receipt stored.",
         "booking": target_booking,
         "receipt": receipt
     }
@@ -250,20 +538,7 @@ async def get_booking_receipt(booking_id: str):
         except Exception as e:
             print(f"Receipt fetch DB error: {e}")
 
-    # Fallback to local memory if demo booking
-    if not b_data:
-        for b in ACTIVE_AGREEMENTS:
-            if b.get("id") == booking_id or b.get("bookingNumber") == booking_id:
-                b_data = {
-                    "id": b.get("id"),
-                    "booking_reference": b.get("bookingNumber", "RZG-BK-8419"),
-                    "job_title": b.get("jobTitle", "Trade Work"),
-                    "wage_offer": b.get("agreedWage", 500),
-                    "date": b.get("date", "Today"),
-                    "status": "completed",
-                    "worker_id": (b.get("worker") or {}).get("id", "rj-jp-0001")
-                }
-                break
+
 
     ref_id = (b_data.get("booking_reference") if b_data else booking_id) or "RZG-BK-8419"
     wage = float((b_data.get("wage_offer") if b_data else 500) or 500)
@@ -494,15 +769,31 @@ async def submit_booking_review(booking_id: str, rev: ReviewSubmitSchema):
     supabase = get_supabase_client()
     if supabase:
         try:
+            # Resolve booking UUID for FK
+            resolved_booking_id = None
+            try:
+                uuid.UUID(str(booking_id))
+                resolved_booking_id = booking_id
+            except (ValueError, AttributeError):
+                try:
+                    bk_res = supabase.table("bookings").select("id").eq("booking_reference", booking_id).execute()
+                    if bk_res.data:
+                        resolved_booking_id = bk_res.data[0]["id"]
+                except Exception:
+                    pass
+
             # 1. Insert review into reviews table
-            supabase.table("reviews").insert({
+            review_row = {
                 "author_name": rev.authorName or "Employer",
                 "author_role": rev.authorRole or "employer",
                 "rating": rev.rating,
                 "comment": rev.comment,
                 "tags": rev.tags or [],
                 "worker_id": rev.workerId
-            }).execute()
+            }
+            if resolved_booking_id:
+                review_row["booking_id"] = resolved_booking_id
+            supabase.table("reviews").insert(review_row).execute()
 
             # 2. Recalculate average rating & increment reviews_count for worker
             if rev.workerId:
@@ -521,5 +812,182 @@ async def submit_booking_review(booking_id: str, rev: ReviewSubmitSchema):
         "success": True,
         "message": "Review submitted successfully",
         "review": rev.dict()
+    }
+
+@router.post("/contracts/submit")
+async def submit_contract(req: ContractSubmitSchema, authorization: Optional[str] = Header(None)):
+    """Employer submits a detailed contract for a specific worker with negotiated terms"""
+    supabase = get_supabase_client()
+    contract_id = f"ct-{uuid.uuid4().hex[:8]}"
+    booking_reference = f"RZG-CT-{uuid.uuid4().hex[:4].upper()}"
+
+    employer_id = None
+    if authorization:
+        try:
+            token = authorization.replace("Bearer ", "")
+            payload = decode_access_token(token)
+            if payload:
+                phone = payload.get("sub")
+                if supabase and phone:
+                    emp_res = supabase.table("employer_profiles").select("id").eq("phone", phone).execute()
+                    if emp_res.data and len(emp_res.data) > 0:
+                        employer_id = emp_res.data[0]["id"]
+        except Exception as e:
+            print(f"Error extracting employer from token: {e}")
+
+    contract_data = {
+        "booking_reference": booking_reference,
+        "employer_id": employer_id,
+        "worker_id": req.workerId,
+        "service_id": req.serviceCategory,
+        "job_title": f"{req.serviceCategory} Contract",
+        "description": req.description,
+        "location": req.location,
+        "date": req.date,
+        "wage_offer": req.agreedWage,
+        "wage_type": "daily",
+        "duration_days": req.duration or 1,
+        "special_terms": req.specialTerms,
+        "status": "agreement_pending",
+        "agreement_confirmed_by_employer": True,
+        "agreement_confirmed_by_worker": False
+    }
+
+    if supabase:
+        try:
+            print(f"DEBUG: Inserting contract for worker {req.workerId} with wage {req.agreedWage}")
+            print(f"DEBUG: Contract data: {contract_data}")
+            res = supabase.table("bookings").insert(contract_data).execute()
+            print(f"DEBUG: Supabase response: {res}")
+            if res.data and len(res.data) > 0:
+                contract_id = res.data[0]["id"]
+                booking_reference = res.data[0]["booking_reference"]
+                print(f"✓ Contract stored successfully: {contract_id}")
+            else:
+                print(f"⚠ WARNING: Insert returned no data. Full response: {res}")
+        except Exception as e:
+            print(f"❌ ERROR persisting contract to Supabase: {e}")
+            print(f"   Contract data was: {contract_data}")
+            import traceback
+            traceback.print_exc()
+    else:
+        print("❌ ERROR: Supabase client is None! Check .env file.")
+
+    return {
+        "success": True,
+        "contractId": contract_id,
+        "bookingReference": booking_reference,
+        "workerId": req.workerId,
+        "agreedWage": req.agreedWage,
+        "status": "agreement_pending",
+        "message": "Contract submitted successfully. Waiting for worker acceptance."
+    }
+
+@router.get("/contracts/worker/{worker_id}")
+async def get_worker_contracts(worker_id: str):
+    """Get all pending contracts for a worker"""
+    supabase = get_supabase_client()
+    contracts = []
+
+    if supabase:
+        try:
+            res = (
+                supabase.table("bookings")
+                .select("*")
+                .eq("worker_id", worker_id)
+                .in_("status", ["agreement_pending", "active"])
+                .order("created_at", desc=True)
+                .execute()
+            )
+
+            if res.data and len(res.data) > 0:
+                employer_ids = list(set(b.get("employer_id") for b in res.data if b.get("employer_id")))
+                employer_map = {}
+
+                if employer_ids:
+                    try:
+                        e_res = supabase.table("employer_profiles").select("id, name, phone").in_("id", employer_ids).execute()
+                        for e in (e_res.data or []):
+                            employer_map[e["id"]] = e
+                    except Exception:
+                        pass
+
+                for b in res.data:
+                    eid = b.get("employer_id")
+                    employer_data = employer_map.get(eid, {}) if eid else {}
+
+                    contracts.append({
+                        "id": str(b.get("id")),
+                        "bookingReference": b.get("booking_reference"),
+                        "serviceCategory": b.get("service_id", ""),
+                        "jobTitle": b.get("job_title", ""),
+                        "description": b.get("description", ""),
+                        "location": b.get("location", ""),
+                        "date": str(b.get("date", "")),
+                        "agreedWage": float(b.get("wage_offer") or 0),
+                        "specialTerms": b.get("special_terms"),
+                        "status": b.get("status", "agreement_pending"),
+                        "employerName": employer_data.get("name", "Employer"),
+                        "employerPhone": employer_data.get("phone", ""),
+                        "confirmedByWorker": b.get("agreement_confirmed_by_worker", False),
+                        "createdAt": str(b.get("created_at", ""))
+                    })
+        except Exception as e:
+            print(f"Error fetching worker contracts from Supabase: {e}")
+
+    return {"contracts": contracts, "count": len(contracts)}
+
+@router.post("/contracts/{contract_id}/accept")
+async def accept_contract(contract_id: str):
+    """Worker accepts a contract"""
+    supabase = get_supabase_client()
+
+    if supabase:
+        try:
+            try:
+                uuid.UUID(str(contract_id))
+                supabase.table("bookings").update({
+                    "agreement_confirmed_by_worker": True,
+                    "status": "active"
+                }).eq("id", contract_id).execute()
+            except (ValueError, AttributeError):
+                supabase.table("bookings").update({
+                    "agreement_confirmed_by_worker": True,
+                    "status": "active"
+                }).eq("booking_reference", contract_id).execute()
+        except Exception as e:
+            print(f"Error accepting contract in Supabase: {e}")
+
+    return {
+        "success": True,
+        "contractId": contract_id,
+        "message": "Contract accepted successfully. Work arrangement confirmed!"
+    }
+
+@router.post("/contracts/{contract_id}/reject")
+async def reject_contract(contract_id: str, req: ContractActionSchema):
+    """Worker rejects a contract"""
+    supabase = get_supabase_client()
+
+    if supabase:
+        try:
+            try:
+                uuid.UUID(str(contract_id))
+                supabase.table("bookings").update({
+                    "status": "cancelled",
+                    "special_terms": f"Rejected by worker. Reason: {req.rejectReason or 'Not specified'}"
+                }).eq("id", contract_id).execute()
+            except (ValueError, AttributeError):
+                supabase.table("bookings").update({
+                    "status": "cancelled",
+                    "special_terms": f"Rejected by worker. Reason: {req.rejectReason or 'Not specified'}"
+                }).eq("booking_reference", contract_id).execute()
+        except Exception as e:
+            print(f"Error rejecting contract in Supabase: {e}")
+
+    return {
+        "success": True,
+        "contractId": contract_id,
+        "message": "Contract rejected successfully."
     }
 

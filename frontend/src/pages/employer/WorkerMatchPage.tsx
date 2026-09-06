@@ -665,7 +665,11 @@ export const WorkerMatchPage: React.FC = () => {
             setIsAgreementOpen(false);
             navigate('/employer/requests');
           }}
-          agreement={viewingAgreement}
+          agreement={
+            activeAgreements.find(
+              (a) => a.id === viewingAgreement.id || a.bookingNumber === viewingAgreement.bookingNumber
+            ) || viewingAgreement
+          }
           isEmployerPerspective={true}
           onEmployerReject={() => {
             rejectWorkerAndShowNext('Declined from agreement modal', viewingAgreement.serviceCategory);

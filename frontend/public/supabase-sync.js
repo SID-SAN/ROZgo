@@ -6,7 +6,7 @@
 (function () {
   // Determine Backend API Base URL
   const DEFAULT_RENDER_URL = 'https://rozgo-backend.onrender.com/api/v1';
-  const LOCAL_DEV_URL = 'http://localhost:5000/api/v1';
+  const LOCAL_DEV_URL = '/api/v1';
   
   const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
   const API_BASE = window.__ROZGO_API_URL__ || (isLocal ? LOCAL_DEV_URL : DEFAULT_RENDER_URL);
@@ -24,7 +24,26 @@
         body: JSON.stringify(payload),
       });
       if (res.ok) {
-        console.log(`%c[ROZgo Supabase Sync]%c Successfully synced to ${endpoint}`, 'color: #10b981;', 'color: gray;', payload);
+        const resData = await res.json();
+        console.log(`%c[ROZgo Supabase Sync]%c Successfully synced to ${endpoint}`, 'color: #10b981;', 'color: gray;', resData);
+        
+        // If worker profile was synced, update local state with official sequential UID (labour_no)
+        if (endpoint === '/sync/worker' && resData?.data?.[0]?.labour_no) {
+          const officialUid = resData.data[0].labour_no;
+          const currentProfileStr = localStorage.getItem('rozgo_worker_profile');
+          if (currentProfileStr) {
+            try {
+              const currentProfile = JSON.parse(currentProfileStr);
+              if (currentProfile.labourNumber !== officialUid) {
+                currentProfile.labourNumber = officialUid;
+                currentProfile.id = officialUid;
+                originalSetItem.call(localStorage, 'rozgo_worker_profile', JSON.stringify(currentProfile));
+                window.dispatchEvent(new Event('storage'));
+                console.log(`%c[ROZgo UID Assigned]%c Worker assigned sequential UID: ${officialUid}`, 'color: #3b82f6; font-weight: bold;', 'color: auto;');
+              }
+            } catch (e) {}
+          }
+        }
       } else {
         console.warn(`[ROZgo Supabase Sync] Failed sync to ${endpoint}:`, res.status);
       }
@@ -49,8 +68,9 @@
         if (profile && profile.phone) {
           postSync('/sync/employer', profile);
         }
-      } else if (key === 'rozgo_active_agreement') {
-        const agreement = JSON.parse(value);
+      } else if (key === 'rozgo_active_agreement' || key === 'rozgo_active_agreements') {
+        const data = JSON.parse(value);
+        const agreement = Array.isArray(data) ? (data.length > 0 ? data[0] : null) : data;
         if (agreement) {
           postSync('/sync/booking', agreement);
         }

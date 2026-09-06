@@ -374,6 +374,7 @@ export interface JobRecommendation {
   estimatedHours: string;
   description: string;
   postedAt: string;
+  wage?: number;
 }
 
 // -------------------------------------------------------------

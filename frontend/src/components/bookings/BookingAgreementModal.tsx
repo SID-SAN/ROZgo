@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ShieldCheck,
   Calendar,
@@ -9,12 +9,15 @@ import {
   AlertCircle,
   Printer,
   XCircle,
+  Loader2,
 } from 'lucide-react';
 import { BookingAgreement } from '../../types';
 import { Modal } from '../common/Modal';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
 import { LabourBadge } from '../workers/LabourBadge';
+import { apiClient } from '../../api/apiClient';
+import { API_ENDPOINTS } from '../../api/endpoints';
 
 interface BookingAgreementModalProps {
   isOpen: boolean;
@@ -37,6 +40,56 @@ export const BookingAgreementModal: React.FC<BookingAgreementModalProps> = ({
   isEmployerPerspective = false,
   onEmployerReject,
 }) => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const handleWorkerAccept = async () => {
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      // Call backend contract accept endpoint
+      const contractId = agreement.id || agreement.bookingNumber;
+      await apiClient.post('/bookings/agreement/worker-response', {
+        bookingId: contractId,
+        accept: true,
+      }).catch(() => apiClient.post(API_ENDPOINTS.CONTRACTS.ACCEPT(contractId), {}));
+
+      if (onWorkerConfirm) onWorkerConfirm();
+      onClose();
+    } catch (err) {
+      console.error('Error accepting contract:', err);
+      setSubmitError('Failed to accept contract. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleWorkerReject = async () => {
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      // Call backend contract reject endpoint
+      const contractId = agreement.id || agreement.bookingNumber;
+      await apiClient.post('/bookings/agreement/worker-response', {
+        bookingId: contractId,
+        accept: false,
+        rejectReason: 'Rejected by worker',
+      }).catch(() => apiClient.post(API_ENDPOINTS.CONTRACTS.REJECT(contractId), {
+        contractId,
+        action: 'reject',
+        rejectReason: 'Rejected by worker'
+      }));
+
+      if (onWorkerReject) onWorkerReject();
+      onClose();
+    } catch (err) {
+      console.error('Error rejecting contract:', err);
+      setSubmitError('Failed to reject contract. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} maxWidth="xl">
       <div className="space-y-6 print-agreement-container">
@@ -67,19 +120,34 @@ export const BookingAgreementModal: React.FC<BookingAgreementModalProps> = ({
             size="md"
           >
             {agreement.status === 'confirmed'
-              ? 'Confirmed'
+              ? 'Work Accepted • Confirmed'
               : agreement.status === 'completed'
               ? 'Completed'
               : 'Awaiting Worker Confirmation'}
           </Badge>
         </div>
 
-        {/* Agreement Summary Box */}
-        <div className="p-5 rounded-2xl bg-rozgo-50/70 dark:bg-darkbg-surface border border-rozgo-100 dark:border-darkbg-border space-y-4">
+        {/* Work Accepted Banner */}
+        {agreement.status === 'confirmed' && (
+          <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800/60 text-emerald-950 dark:text-emerald-200 text-xs sm:text-sm flex items-center gap-3">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <div>
+              <span className="font-bold text-emerald-900 dark:text-emerald-300">
+                Work Accepted & Confirmed by Worker!
+              </span>
+              <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-0.5">
+                The worker has confirmed and accepted this booking at ₹{agreement.agreedWage.toLocaleString('en-IN')}. This job is officially active.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Agreement Summary Box - REAL DATA FROM CONTRACT */}
+        <div className="p-5 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/30 border-2 border-emerald-200 dark:border-emerald-900/50 space-y-4">
           <div className="flex justify-between items-start">
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-rozgo-700 dark:text-rozgo-300">
-                Job Specification
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                Job Specification (From Employer Contract)
               </span>
               <h4 className="text-xl font-bold text-neutral-900 dark:text-white mt-0.5">
                 {agreement.workTitle}
@@ -89,30 +157,33 @@ export const BookingAgreementModal: React.FC<BookingAgreementModalProps> = ({
               </p>
             </div>
             <div className="text-right">
-              <span className="text-xs text-neutral-500 uppercase font-semibold">Agreed Total Wage</span>
-              <div className="text-2xl font-black text-rozgo-900 dark:text-emerald-400">
-                ₹{agreement.agreedWage.toLocaleString()}
+              <span className="text-xs text-neutral-500 uppercase font-semibold">💰 Exact Wage (Negotiated)</span>
+              <div className="text-3xl font-black text-emerald-700 dark:text-emerald-400 mt-1">
+                ₹{agreement.agreedWage.toLocaleString('en-IN')}
               </div>
+              <span className="text-xs text-emerald-600 dark:text-emerald-300 mt-2 block">
+                No commission deducted
+              </span>
             </div>
           </div>
 
-          {/* Key Metrics */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-rozgo-200/60 dark:border-darkbg-border text-xs">
+          {/* Key Metrics - ALL FROM CONTRACT */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-emerald-200 dark:border-emerald-900/50 text-xs">
             <div>
-              <div className="text-neutral-500 font-medium">Date</div>
+              <div className="text-neutral-600 dark:text-neutral-400 font-medium">Date</div>
               <div className="font-bold text-neutral-900 dark:text-white mt-0.5">{agreement.date}</div>
             </div>
             <div>
-              <div className="text-neutral-500 font-medium">Start Time</div>
+              <div className="text-neutral-600 dark:text-neutral-400 font-medium">Start Time</div>
               <div className="font-bold text-neutral-900 dark:text-white mt-0.5">{agreement.time}</div>
             </div>
             <div>
-              <div className="text-neutral-500 font-medium">Workers Engaged</div>
+              <div className="text-neutral-600 dark:text-neutral-400 font-medium">Workers</div>
               <div className="font-bold text-neutral-900 dark:text-white mt-0.5">{agreement.workersCount} Worker(s)</div>
             </div>
             <div>
-              <div className="text-neutral-500 font-medium">Difficulty Level</div>
-              <div className="font-bold text-neutral-900 dark:text-white mt-0.5">{agreement.difficulty}</div>
+              <div className="text-neutral-600 dark:text-neutral-400 font-medium">Location</div>
+              <div className="font-bold text-neutral-900 dark:text-white mt-0.5 truncate">{agreement.location}</div>
             </div>
           </div>
         </div>
@@ -158,11 +229,14 @@ export const BookingAgreementModal: React.FC<BookingAgreementModalProps> = ({
         </div>
 
         {/* Cooperative Transparency Notice */}
-        <div className="p-3.5 rounded-xl bg-neutral-50 dark:bg-darkbg-surface text-xs text-neutral-600 dark:text-neutral-300 flex items-start gap-2.5">
-          <ShieldCheck className="w-4 h-4 text-rozgo-700 flex-shrink-0 mt-0.5" />
-          <p>
-            This agreement confirms that wages, timings, and worker count were negotiated directly over phone calls. ROZGO does not deduct intermediary commissions.
-          </p>
+        <div className="p-4 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 text-xs text-emerald-900 dark:text-emerald-100 flex items-start gap-2.5">
+          <ShieldCheck className="w-5 h-5 text-emerald-700 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold">✓ Genuine Contract - Direct from Employer</p>
+            <p className="mt-1">
+              This agreement shows the EXACT terms submitted by the employer. Wages and conditions were negotiated directly over phone. ROZGO takes 0% commission - you receive 100% of the agreed wage (₹{agreement.agreedWage.toLocaleString('en-IN')}).
+            </p>
+          </div>
         </div>
 
         {/* Employer Perspective Notice when awaiting worker confirmation */}
@@ -178,6 +252,17 @@ export const BookingAgreementModal: React.FC<BookingAgreementModalProps> = ({
           </div>
         )}
 
+        {/* Error Message */}
+        {submitError && (
+          <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 text-rose-900 dark:text-rose-200 text-xs sm:text-sm flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-bold">Error</div>
+              <p className="text-xs text-rose-800/80 dark:text-rose-300/80 mt-0.5">{submitError}</p>
+            </div>
+          </div>
+        )}
+
         {/* Action Buttons */}
         {isWorkerPerspective && agreement.status === 'awaiting_confirmation' ? (
           <div className="pt-2 flex flex-col sm:flex-row gap-3">
@@ -185,27 +270,23 @@ export const BookingAgreementModal: React.FC<BookingAgreementModalProps> = ({
               variant="outline"
               size="lg"
               fullWidth
-              leftIcon={<XCircle className="w-5 h-5 text-rose-600 dark:text-rose-400" />}
-              onClick={() => {
-                if (onWorkerReject) onWorkerReject();
-                onClose();
-              }}
-              className="border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-300 font-bold"
+              disabled={isSubmitting}
+              leftIcon={isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <XCircle className="w-5 h-5 text-rose-600 dark:text-rose-400" />}
+              onClick={handleWorkerReject}
+              className="border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-300 font-bold disabled:opacity-50"
             >
-              Reject Booking
+              {isSubmitting ? 'Rejecting...' : 'Reject Booking'}
             </Button>
             <Button
               variant="primary"
               size="lg"
               fullWidth
-              leftIcon={<CheckCircle2 className="w-5 h-5 text-rozgo-300" />}
-              onClick={() => {
-                if (onWorkerConfirm) onWorkerConfirm();
-                onClose();
-              }}
-              className="!bg-[#123B32] hover:!bg-[#0c2721] text-white font-bold"
+              disabled={isSubmitting}
+              leftIcon={isSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5 text-rozgo-300" />}
+              onClick={handleWorkerAccept}
+              className="!bg-[#123B32] hover:!bg-[#0c2721] text-white font-bold disabled:opacity-50"
             >
-              Confirm Booking (Accept)
+              {isSubmitting ? 'Confirming...' : 'Confirm Booking (Accept)'}
             </Button>
           </div>
         ) : (

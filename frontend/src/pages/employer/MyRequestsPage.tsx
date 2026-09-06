@@ -275,7 +275,11 @@ export const MyRequestsPage: React.FC = () => {
         <BookingAgreementModal
           isOpen={Boolean(viewingAgreement)}
           onClose={() => setViewingAgreement(null)}
-          agreement={viewingAgreement}
+          agreement={
+            activeAgreements.find(
+              (a) => a.id === viewingAgreement.id || a.bookingNumber === viewingAgreement.bookingNumber
+            ) || viewingAgreement
+          }
           isEmployerPerspective={true}
           onEmployerReject={() => {
             employerRejectBooking('Cancelled by employer', viewingAgreement.id);

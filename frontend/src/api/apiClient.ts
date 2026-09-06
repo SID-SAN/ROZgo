@@ -3,7 +3,7 @@
  * Clean HTTP client supporting authentication tokens and easy backend integration.
  */
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1';
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
 export class ApiError extends Error {
   statusCode: number;

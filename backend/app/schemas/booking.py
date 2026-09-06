@@ -25,6 +25,30 @@ class BookingAgreementConfirm(BaseModel):
     date: str
     time: Optional[str] = "09:00 AM"
     terms: Optional[str] = "Standard ROZgo agreement"
+    confirmedByWorker: Optional[bool] = False
+
+class WorkerAgreementAction(BaseModel):
+    bookingId: str
+    bookingNumber: Optional[str] = None
+    accept: bool = True
+    rejectReason: Optional[str] = None
+
+class ContractSubmitSchema(BaseModel):
+    bookingId: Optional[str] = None
+    workerId: str
+    serviceCategory: str
+    description: str
+    location: str
+    date: str
+    time: Optional[str] = "09:00 AM"
+    agreedWage: float
+    specialTerms: Optional[str] = None
+    duration: Optional[int] = 1
+
+class ContractActionSchema(BaseModel):
+    contractId: str
+    action: str = Field(..., description="accept or reject")
+    rejectReason: Optional[str] = None
 
 class ReviewSubmitSchema(BaseModel):
     rating: float = Field(..., ge=1, le=5)

@@ -23,7 +23,7 @@ import { JobSwipeCard } from '../../components/workers/JobSwipeCard';
 import { LabourBadge } from '../../components/workers/LabourBadge';
 import { ActiveBookingCard } from '../../components/bookings/ActiveBookingCard';
 import { BookingAgreementModal } from '../../components/bookings/BookingAgreementModal';
-import { WaitingForAgreementModal } from '../../components/bookings/WaitingForAgreementModal';
+import { AcceptRejectWorkModal } from '../../components/bookings/AcceptRejectWorkModal';
 import { RatingReviewModal } from '../../components/bookings/RatingReviewModal';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
@@ -33,7 +33,7 @@ import { JobRecommendation, BookingAgreement } from '../../types';
 
 export const WorkerDashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const { workerUser } = useAuth();
+  const { workerUser, updateWorkerProfile } = useAuth();
   const { t } = useLanguage();
   const {
     activeAgreement,
@@ -49,18 +49,74 @@ export const WorkerDashboardPage: React.FC = () => {
   const { activeGrievancesCount } = useGrievance();
 
   // Dialog states
-  const [isWaitingAgreement, setIsWaitingAgreement] = useState(false);
   const [pendingCallJob, setPendingCallJob] = useState<JobRecommendation | null>(null);
-  const [activeCallTarget, setActiveCallTarget] = useState<{
-    name: string;
-    phone: string;
-    title: string;
-  }>({ name: '', phone: '', title: '' });
-
   const [isAgreementOpen, setIsAgreementOpen] = useState(false);
   const [isRatingOpen, setIsRatingOpen] = useState(false);
   const [viewingCompletedAgreement, setViewingCompletedAgreement] = useState<BookingAgreement | null>(null);
   const [isVerificationDismissed, setIsVerificationDismissed] = useState(false);
+  const [currentContract, setCurrentContract] = useState<any>(null);
+
+  // Accept/Reject Work Dialog states
+  const [isAcceptRejectModalOpen, setIsAcceptRejectModalOpen] = useState(false);
+  const [selectedJobForModal, setSelectedJobForModal] = useState<JobRecommendation | null>(null);
+  const [isSubmittingResponse, setIsSubmittingResponse] = useState(false);
+  const [responseError, setResponseError] = useState<string | null>(null);
+
+  // Auto-open Accept/Reject dialog when a pending agreement arrives for this worker
+  React.useEffect(() => {
+    if (activeAgreement && activeAgreement.status === 'awaiting_confirmation') {
+      const dismissedKey = `dismissed_offer_${activeAgreement.id}`;
+      if (!sessionStorage.getItem(dismissedKey)) {
+        setIsAcceptRejectModalOpen(true);
+      }
+    }
+  }, [activeAgreement?.id, activeAgreement?.status]);
+
+  const handleCloseAcceptRejectModal = () => {
+    if (activeAgreement?.id) {
+      sessionStorage.setItem(`dismissed_offer_${activeAgreement.id}`, 'true');
+    }
+    setIsAcceptRejectModalOpen(false);
+    setSelectedJobForModal(null);
+  };
+
+  const handleModalAccept = async () => {
+    setIsSubmittingResponse(true);
+    setResponseError(null);
+    try {
+      if (selectedJobForModal) {
+        selectJobAsActiveAgreement(selectedJobForModal, selectedJobForModal.wage || 1200, 'confirmed');
+        handleCloseAcceptRejectModal();
+      } else if (activeAgreement) {
+        workerConfirmBooking(activeAgreement.id, true);
+        handleCloseAcceptRejectModal();
+      }
+    } catch (err) {
+      console.error('Error confirming work:', err);
+      setResponseError('Failed to confirm acceptance. Please try again.');
+    } finally {
+      setIsSubmittingResponse(false);
+    }
+  };
+
+  const handleModalReject = async () => {
+    setIsSubmittingResponse(true);
+    setResponseError(null);
+    try {
+      if (selectedJobForModal) {
+        workerNextJob();
+        handleCloseAcceptRejectModal();
+      } else if (activeAgreement) {
+        workerConfirmBooking(activeAgreement.id, false);
+        handleCloseAcceptRejectModal();
+      }
+    } catch (err) {
+      console.error('Error declining work:', err);
+      setResponseError('Failed to decline work. Please try again.');
+    } finally {
+      setIsSubmittingResponse(false);
+    }
+  };
 
   const isAvailableToday = (() => {
     if (workerUser.weeklySchedule && workerUser.weeklySchedule.length > 0) {
@@ -76,53 +132,24 @@ export const WorkerDashboardPage: React.FC = () => {
   })();
 
   const handleAcceptWork = (job: JobRecommendation) => {
-    setPendingCallJob(job);
-    setActiveCallTarget({
-      name: job.employerName,
-      phone: job.employerPhone,
-      title: job.subcategory,
-    });
-    setIsWaitingAgreement(true);
+    setSelectedJobForModal(job);
+    setIsAcceptRejectModalOpen(true);
   };
 
   const handleCallEmployer = (job: JobRecommendation) => {
     setPendingCallJob(job);
-    setActiveCallTarget({
-      name: job.employerName,
-      phone: job.employerPhone,
-      title: job.subcategory,
-    });
     const phone = job.employerPhone.replace(/[^0-9+]/g, '') || job.employerPhone;
-    window.location.href = `tel:${phone}`;
-    setIsWaitingAgreement(true);
+    if (phone) {
+      window.location.href = `tel:${phone}`;
+    }
   };
 
   const handleCallFromActiveBooking = () => {
     if (!activeAgreement) return;
     const phone = activeAgreement.employerPhone.replace(/[^0-9+]/g, '') || activeAgreement.employerPhone;
-    window.location.href = `tel:${phone}`;
-  };
-
-  const handleCallAgreed = () => {
-    // Open agreement review
-    // Show "waiting for agreement details by employer"
-    setIsWaitingAgreement(true);
-  };
-
-  const handleAgreementDetailsArrived = () => {
-    setIsWaitingAgreement(false);
-    if (pendingCallJob) {
-      selectJobAsActiveAgreement(pendingCallJob, 1200);
-      setPendingCallJob(null);
+    if (phone) {
+      window.location.href = `tel:${phone}`;
     }
-    // Now show the agreement popup with Accept & Reject options
-    setIsAgreementOpen(true);
-  };
-
-  const handleRejectCallNegotiation = () => {
-    setIsWaitingAgreement(false);
-    setPendingCallJob(null);
-    workerNextJob();
   };
 
   const handleCompleteWork = () => {
@@ -171,6 +198,45 @@ export const WorkerDashboardPage: React.FC = () => {
             </div>
           )}
         </div>
+      </div>
+
+      {/* TODAY'S AVAILABILITY BAR */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-white dark:bg-darkbg-card border border-neutral-200 dark:border-darkbg-border shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className={`w-3.5 h-3.5 rounded-full ${isAvailableToday ? 'bg-emerald-500 animate-pulse' : 'bg-neutral-400'}`} />
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-neutral-900 dark:text-white">
+                Today&apos;s Availability:
+              </span>
+              <span className={`text-xs font-black px-2.5 py-0.5 rounded-full ${
+                isAvailableToday
+                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
+                  : 'bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300'
+              }`}>
+                {isAvailableToday ? 'Available for Work Today' : 'Not Available Today'}
+              </span>
+            </div>
+            <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+              Trade Field: <span className="font-semibold text-neutral-800 dark:text-neutral-200 capitalize">{workerUser.primarySkill || 'General Work'}</span>
+            </p>
+          </div>
+        </div>
+
+        <Button
+          variant={isAvailableToday ? 'outline' : 'primary'}
+          size="sm"
+          onClick={() => {
+            const nextVal = !isAvailableToday;
+            updateWorkerProfile({
+              availableToday: nextVal,
+              availability: nextVal ? 'Available Today' : 'Not Available',
+            });
+          }}
+          className="shrink-0 font-bold"
+        >
+          {isAvailableToday ? 'Change to Not Available' : 'Set as Available Today'}
+        </Button>
       </div>
 
       {/* VERIFICATION CARD (SUPPORTS 4 STATES) */}
@@ -306,42 +372,56 @@ export const WorkerDashboardPage: React.FC = () => {
         <Card
           variant="elevated"
           padding="lg"
-          className="border-2 border-amber-400 bg-amber-50/70 dark:bg-amber-950/30 text-amber-950 dark:text-amber-200 animate-pulse-subtle"
+          className="border-2 border-emerald-500/80 bg-gradient-to-r from-emerald-50 via-teal-50/40 to-emerald-100/30 dark:from-darkbg-card dark:to-emerald-950/20 text-neutral-900 dark:text-white shadow-soft animate-pulse-subtle"
         >
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div className="flex items-start gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-200 flex items-center justify-center flex-shrink-0">
-                <AlertCircle className="w-6 h-6" />
+            <div className="flex items-start gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 flex items-center justify-center flex-shrink-0 shadow-xs">
+                <AlertCircle className="w-6 h-6 text-emerald-700 dark:text-emerald-400" />
               </div>
-              <div>
-                <span className="text-xs font-black uppercase tracking-wider text-amber-700 dark:text-amber-300">
-                  ACTION REQUIRED
-                </span>
-                <h3 className="text-xl font-bold text-neutral-900 dark:text-white">
-                  Booking Confirmation Required
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                  <span className="text-xs font-black uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                    DIRECT WORK OFFER RECEIVED
+                  </span>
+                </div>
+                <h3 className="text-lg sm:text-xl font-black text-neutral-900 dark:text-white">
+                  Action Required: Confirm ₹{activeAgreement.agreedWage.toLocaleString()} Job
                 </h3>
-                <p className="text-xs sm:text-sm text-neutral-700 dark:text-neutral-300 mt-0.5">
-                  {activeAgreement.employerName} entered agreed details: ₹{activeAgreement.agreedWage.toLocaleString()} • {activeAgreement.workTitle}
+                <p className="text-xs sm:text-sm text-neutral-600 dark:text-neutral-300">
+                  <span className="font-bold text-neutral-900 dark:text-white">{activeAgreement.employerName}</span> submitted agreed terms: <span className="font-semibold text-emerald-700 dark:text-emerald-400">₹{activeAgreement.agreedWage.toLocaleString()}</span> • {activeAgreement.workTitle}
                 </p>
               </div>
             </div>
 
-            <div className="flex gap-2 w-full sm:w-auto">
+            <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full sm:w-auto">
               <Button
                 variant="outline"
                 size="md"
-                className="flex-1 sm:flex-none border-amber-400 text-amber-900 dark:text-amber-200"
+                className="flex-1 sm:flex-none border-rose-300 text-rose-700 hover:bg-rose-50 dark:border-rose-800 dark:text-rose-300 font-bold"
                 onClick={() => workerConfirmBooking(activeAgreement.id, false)}
               >
                 Reject
               </Button>
               <Button
+                variant="outline"
+                size="md"
+                className="flex-1 sm:flex-none border-neutral-300 text-neutral-700 dark:text-neutral-200 font-bold"
+                onClick={() => {
+                  setSelectedJobForModal(null);
+                  setIsAcceptRejectModalOpen(true);
+                }}
+              >
+                Review Terms
+              </Button>
+              <Button
                 variant="primary"
                 size="md"
-                className="flex-1 sm:flex-none bg-amber-600 hover:bg-amber-700 text-white"
-                onClick={() => setIsAgreementOpen(true)}
+                className="flex-1 sm:flex-none !bg-emerald-700 hover:!bg-emerald-800 text-white font-black shadow-sm"
+                onClick={() => workerConfirmBooking(activeAgreement.id, true)}
               >
-                Review & Confirm
+                Accept Work (₹{activeAgreement.agreedWage.toLocaleString()})
               </Button>
             </div>
           </div>
@@ -400,17 +480,25 @@ export const WorkerDashboardPage: React.FC = () => {
               isSearchingNext={isSearchingNextJob}
             />
           ) : (
-            <Card variant="elevated" padding="xl" className="text-center py-12">
-              <h4 className="text-xl font-bold text-neutral-900 dark:text-white">
-                {t('workerDashboard.noJobsMatched')}
-              </h4>
+            <Card variant="elevated" padding="xl" className="text-center py-12 border border-neutral-200 dark:border-darkbg-border space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-rozgo-50 dark:bg-darkbg-card text-rozgo-800 dark:text-rozgo-300 flex items-center justify-center mx-auto">
+                <Clock className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <h4 className="text-xl font-bold text-neutral-900 dark:text-white">
+                  No Work Available Currently
+                </h4>
+                <p className="text-sm text-neutral-500 dark:text-neutral-400 max-w-md mx-auto">
+                  You are marked as <span className="font-semibold text-emerald-600 dark:text-emerald-400">Available Today</span> in <span className="font-semibold text-neutral-800 dark:text-neutral-200 capitalize">{workerUser.primarySkill || 'your field'}</span>. Waiting for employers to send work requests in your trade.
+                </p>
+              </div>
               <Button
-                variant="primary"
-                size="md"
-                className="mt-4"
+                variant="outline"
+                size="sm"
+                className="mt-2 font-bold"
                 onClick={workerNextJob}
               >
-                Check Again
+                Check for New Requests
               </Button>
             </Card>
           )}
@@ -519,10 +607,10 @@ export const WorkerDashboardPage: React.FC = () => {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-neutral-100 dark:border-darkbg-border">
             <div className="flex items-center gap-4">
               <div className="text-4xl sm:text-5xl font-black text-neutral-900 dark:text-white tracking-tight">
-                {workerUser.rating.toFixed(1)}
+                {(workerUser.rating || 0).toFixed(1)}
               </div>
               <div>
-                <StarRating rating={workerUser.rating} size="md" />
+                <StarRating rating={workerUser.rating || 0} size="md" />
                 <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
                   Based on {workerUser.completedJobsCount} verified completed jobs
                 </div>
@@ -541,24 +629,28 @@ export const WorkerDashboardPage: React.FC = () => {
               Recent Customer Reviews
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {workerUser.reviews.map((rev) => (
-                <div
-                  key={rev.id}
-                  className="p-4 rounded-2xl bg-neutral-50 dark:bg-darkbg-surface border border-neutral-100 dark:border-darkbg-border text-xs space-y-2"
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-neutral-900 dark:text-white text-sm">
-                      {rev.authorName}
-                    </span>
-                    <span className="text-neutral-400">{rev.date}</span>
+            {workerUser.reviews && workerUser.reviews.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {workerUser.reviews.map((rev) => (
+                  <div
+                    key={rev.id}
+                    className="p-4 rounded-2xl bg-neutral-50 dark:bg-darkbg-surface border border-neutral-100 dark:border-darkbg-border text-xs space-y-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-neutral-900 dark:text-white text-sm">
+                        {rev.authorName}
+                      </span>
+                      <span className="text-neutral-400">{rev.date}</span>
+                    </div>
+                    <p className="text-neutral-600 dark:text-neutral-300 italic leading-relaxed text-sm">
+                      "{rev.comment}"
+                    </p>
                   </div>
-                  <p className="text-neutral-600 dark:text-neutral-300 italic leading-relaxed text-sm">
-                    "{rev.comment}"
-                  </p>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-neutral-400 italic">No customer reviews recorded yet.</p>
+            )}
           </div>
         </Card>
       </section>
@@ -605,16 +697,6 @@ export const WorkerDashboardPage: React.FC = () => {
       </section>
 
 
-      {/* Waiting for Agreement Details by Employer Modal */}
-      <WaitingForAgreementModal
-        isOpen={isWaitingAgreement}
-        onClose={() => setIsWaitingAgreement(false)}
-        employerName={activeCallTarget.name}
-        employerPhone={activeCallTarget.phone}
-        workTitle={activeCallTarget.title}
-        onAgreementArrived={handleAgreementDetailsArrived}
-        onReject={handleRejectCallNegotiation}
-      />
 
       {/* Agreement Confirmation Modal */}
       {activeAgreement && (
@@ -637,6 +719,18 @@ export const WorkerDashboardPage: React.FC = () => {
           isWorkerPerspective={true}
         />
       )}
+
+      {/* Accept / Reject Work Decision Modal */}
+      <AcceptRejectWorkModal
+        isOpen={isAcceptRejectModalOpen}
+        onClose={handleCloseAcceptRejectModal}
+        onAccept={handleModalAccept}
+        onReject={handleModalReject}
+        agreement={selectedJobForModal ? null : activeAgreement}
+        job={selectedJobForModal}
+        isSubmitting={isSubmittingResponse}
+        error={responseError}
+      />
 
       {/* Rating & Review Modal */}
       {activeAgreement && (

@@ -23,12 +23,10 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useBooking } from '../../context/BookingContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { MOCK_JOBS } from '../../data/mockJobs';
 import { Card } from '../../components/common/Card';
 import { Button } from '../../components/common/Button';
 import { Badge } from '../../components/common/Badge';
 import { BookingAgreementModal } from '../../components/bookings/BookingAgreementModal';
-import { WaitingForAgreementModal } from '../../components/bookings/WaitingForAgreementModal';
 import { JobRecommendation } from '../../types';
 
 export const FindWorkPage: React.FC = () => {
@@ -37,6 +35,7 @@ export const FindWorkPage: React.FC = () => {
   const navigate = useNavigate();
   const {
     activeAgreement,
+    availableJobsList,
     selectJobAsActiveAgreement,
     workerConfirmBooking,
   } = useBooking();
@@ -63,7 +62,15 @@ export const FindWorkPage: React.FC = () => {
     return workerUser.availability === 'Available Today';
   })();
 
-  const filteredJobs = MOCK_JOBS.filter((job) => {
+  const normalize = (val?: string) => (val || '').toLowerCase().trim().replace(/[-_ &]/g, '');
+  const workerTrade = normalize(workerUser?.primarySkill);
+
+  const filteredJobs = availableJobsList.filter((job) => {
+    const jobCat = normalize(job.serviceCategory);
+    // Worker of one field should not get work of any other field (e.g. plumber should not see drivers request)
+    if (workerTrade && jobCat && workerTrade !== jobCat && !workerTrade.includes(jobCat) && !jobCat.includes(workerTrade)) {
+      return false;
+    }
     const matchesCategory =
       filterCategory === 'all' || job.serviceCategory === filterCategory;
     const matchesQuery =
@@ -111,7 +118,7 @@ export const FindWorkPage: React.FC = () => {
   const handleAgreementDetailsArrived = () => {
     setIsWaitingAgreement(false);
     if (pendingAgreedJob) {
-      selectJobAsActiveAgreement(pendingAgreedJob, 1200);
+      selectJobAsActiveAgreement(pendingAgreedJob, pendingAgreedJob.wage || 1000);
       setPendingAgreedJob(null);
     }
     // Show agreement popup with Accept & Reject options
@@ -125,8 +132,8 @@ export const FindWorkPage: React.FC = () => {
   };
 
   const handleDirectAcceptWork = (job: JobRecommendation) => {
-    setPendingAgreedJob(job);
-    setIsWaitingAgreement(true);
+    selectJobAsActiveAgreement(job, job.wage || 1200, 'confirmed');
+    setShowConfirmedNotice(true);
   };
 
   const handleConfirmBooking = () => {
@@ -557,18 +564,6 @@ export const FindWorkPage: React.FC = () => {
       )}
 
 
-      {/* Waiting for Agreement Details by Employer Dialog */}
-      {pendingAgreedJob && (
-        <WaitingForAgreementModal
-          isOpen={isWaitingAgreement}
-          onClose={() => setIsWaitingAgreement(false)}
-          employerName={pendingAgreedJob.employerName}
-          employerPhone={pendingAgreedJob.employerPhone}
-          workTitle={pendingAgreedJob.subcategory}
-          onAgreementArrived={handleAgreementDetailsArrived}
-          onReject={handleRejectCallNegotiation}
-        />
-      )}
 
       {/* ROZGO Cooperative Agreement Review & Confirmation Modal */}
       {activeAgreement && (

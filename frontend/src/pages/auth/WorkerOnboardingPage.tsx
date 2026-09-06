@@ -176,13 +176,8 @@ export const WorkerOnboardingPage: React.FC = () => {
   // STEP 1 Form State
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
-  const [otp, setOtp] = useState('');
-  const [isOtpSent, setIsOtpSent] = useState(false);
-  const [isOtpVerified, setIsOtpVerified] = useState(false);
-  const [otpCountdown, setOtpCountdown] = useState(0);
-  const [isSendingOtp, setIsSendingOtp] = useState(false);
-  const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
-  const [otpFeedback, setOtpFeedback] = useState<string | null>(null);
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [dobOrAge, setDobOrAge] = useState('');
   const [gender, setGender] = useState<'Male' | 'Female' | 'Other' | 'Prefer not to say'>('Male');
   const [preferredLang, setPreferredLang] = useState(language);
@@ -233,56 +228,6 @@ export const WorkerOnboardingPage: React.FC = () => {
   // Completion State
   const [generatedLabourNo, setGeneratedLabourNo] = useState<string>('');
 
-  // OTP Countdown timer
-  useEffect(() => {
-    let timer: any;
-    if (isOtpSent && otpCountdown > 0) {
-      timer = setInterval(() => {
-        setOtpCountdown((prev) => prev - 1);
-      }, 1000);
-    }
-    return () => clearInterval(timer);
-  }, [isOtpSent, otpCountdown]);
-
-  const handleSendOtp = async () => {
-    if (phone.length !== 10) {
-      setFormError('Please enter a valid 10-digit mobile number first.');
-      return;
-    }
-    setFormError(null);
-    setOtpFeedback(null);
-    setIsSendingOtp(true);
-    try {
-      const res = await authApi.sendOtp(phone);
-      setIsOtpSent(true);
-      setOtpCountdown(30);
-      setOtp('');
-      setIsOtpVerified(false);
-      setOtpFeedback(res.message + (res.demo_otp ? ` (Test OTP: ${res.demo_otp})` : ''));
-    } catch (err: any) {
-      setFormError(err.message || 'Failed to send OTP. Please try again.');
-    } finally {
-      setIsSendingOtp(false);
-    }
-  };
-
-  const handleVerifyOtp = async () => {
-    if (otp.trim().length < 4) {
-      setFormError('Please enter the 4 to 6-digit OTP sent to your phone.');
-      return;
-    }
-    setFormError(null);
-    setIsVerifyingOtp(true);
-    try {
-      await authApi.verifyOtp(phone, otp, 'worker');
-      setIsOtpVerified(true);
-      setOtpFeedback('Mobile number verified successfully! ✓');
-    } catch (err: any) {
-      setFormError(err.message || 'Invalid OTP entered. Please try again (Demo OTP: 123456).');
-    } finally {
-      setIsVerifyingOtp(false);
-    }
-  };
 
   const toggleTrade = (tradeId: string) => {
     setSelectedTrades((prev) => {
@@ -336,8 +281,12 @@ export const WorkerOnboardingPage: React.FC = () => {
       setFormError('Please enter a valid 10-digit mobile number.');
       return false;
     }
-    if (!isOtpVerified) {
-      setFormError('Please verify your mobile number with the OTP.');
+    if (password.length < 4) {
+      setFormError('Password must be at least 4 characters.');
+      return false;
+    }
+    if (password !== confirmPassword) {
+      setFormError('Passwords do not match.');
       return false;
     }
     if (!dobOrAge.trim()) {
@@ -370,7 +319,7 @@ export const WorkerOnboardingPage: React.FC = () => {
     return true;
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (step === 1) {
       if (validateStep1()) setStep(2);
     } else if (step === 2) {
@@ -380,40 +329,46 @@ export const WorkerOnboardingPage: React.FC = () => {
         // Calculate experience years estimate for backward compatibility
         let expYrs = 3;
         if (experienceRange === 'Less than 1 year') expYrs = 1;
-        else if (experienceRange === '1–3 years') expYrs = 2;
-        else if (experienceRange === '3–5 years') expYrs = 4;
-        else if (experienceRange === '5–10 years') expYrs = 7;
+        else if (experienceRange === '1-3 years') expYrs = 2;
+        else if (experienceRange === '3-5 years') expYrs = 4;
+        else if (experienceRange === '5-10 years') expYrs = 7;
         else if (experienceRange === '10+ years') expYrs = 12;
 
-        const labourId = registerWorker({
-          name: fullName,
-          phone: `+91 ${phone.replace(/\D/g, '')}`,
-          location: `${cityTownVillage}, ${district}, ${stateName} - ${pincode}`,
-          primarySkill: selectedTrades[0] || 'plumber',
-          experienceYears: expYrs,
-          dobOrAge,
-          gender,
-          preferredLanguage: preferredLang,
-          state: stateName,
-          district,
-          city: cityTownVillage,
-          pincode,
-          travelRadius,
-          selectedTrades,
-          subSkills: selectedSubSkills,
-          experienceRange,
-          experienceDescription,
-          usualAvailability,
-          availableToday,
-          avatar:
-            customPhotoUrl ||
-            (gender === 'Female'
-              ? 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=160&auto=format&fit=crop&q=80'
-              : 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=160&auto=format&fit=crop&q=80'),
-        });
+        try {
+          const labourId = await registerWorker({
+            name: fullName,
+            phone: `+91 ${phone.replace(/\D/g, '')}`,
+            password,
+            location: `${cityTownVillage}, ${district}, ${stateName} - ${pincode}`,
+            primarySkill: selectedTrades[0] || 'plumber',
+            experienceYears: expYrs,
+            dobOrAge,
+            gender,
+            preferredLanguage: preferredLang,
+            state: stateName,
+            district,
+            city: cityTownVillage,
+            pincode,
+            travelRadius,
+            selectedTrades,
+            subSkills: selectedSubSkills,
+            experienceRange,
+            experienceDescription,
+            usualAvailability,
+            availableToday,
+            avatar:
+              customPhotoUrl ||
+              (gender === 'Female'
+                ? 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=160&auto=format&fit=crop&q=80'
+                : 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=160&auto=format&fit=crop&q=80'),
+          });
 
-        setGeneratedLabourNo(labourId);
-        setStep(4);
+          setGeneratedLabourNo(labourId);
+          setStep(4);
+        } catch (err: any) {
+          setFormError(err.message || 'Registration failed. Please try again.');
+          return;
+        }
       }
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -575,75 +530,50 @@ export const WorkerOnboardingPage: React.FC = () => {
                       onChange={(e) => {
                         const val = e.target.value.replace(/\D/g, '');
                         setPhone(val);
-                        if (isOtpVerified) setIsOtpVerified(false);
                       }}
                       placeholder="98765 43210"
                       className="w-full pl-14 pr-4 py-3 rounded-2xl bg-neutral-50 dark:bg-darkbg-surface border border-neutral-200 dark:border-darkbg-border text-neutral-900 dark:text-white font-bold text-base tracking-wider focus:outline-none focus:ring-2 focus:ring-rozgo-900"
                       required
                     />
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={handleSendOtp}
-                    disabled={phone.length !== 10 || isSendingOtp || (isOtpSent && otpCountdown > 0)}
-                    className="px-5 py-3 rounded-2xl bg-rozgo-900 text-white font-bold text-sm shadow-soft disabled:opacity-50 disabled:cursor-not-allowed hover:bg-rozgo-800 transition-all flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer"
-                  >
-                    <KeyRound className="w-4 h-4" />
-                    {isSendingOtp
-                      ? 'Sending...'
-                      : isOtpVerified
-                      ? 'Verified ✓'
-                      : isOtpSent
-                      ? otpCountdown > 0
-                        ? `Resend (${otpCountdown}s)`
-                        : 'Resend OTP'
-                      : 'Send OTP'}
-                  </button>
                 </div>
               </div>
 
-              {/* OTP Field (Shown when OTP is sent) */}
-              {isOtpSent && (
-                <div className="sm:col-span-2 p-4 rounded-2xl bg-rozgo-50/70 dark:bg-darkbg-surface border border-rozgo-200 dark:border-darkbg-border space-y-3 animate-fadeIn">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold uppercase tracking-wider text-rozgo-900 dark:text-rozgo-300 flex items-center gap-2">
-                      <KeyRound className="w-4 h-4" />
-                      <span>Enter 4 to 6-Digit OTP <span className="text-rozgo-700">*</span></span>
-                    </label>
-                    {otpFeedback && (
-                      <span className="text-xs text-neutral-600 dark:text-neutral-300 font-medium">
-                        {otpFeedback}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-3">
-                    <input
-                      type="text"
-                      maxLength={6}
-                      value={otp}
-                      onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                      placeholder="123456"
-                      className="w-44 px-4 py-2.5 rounded-xl bg-white dark:bg-darkbg-base border border-rozgo-300 dark:border-rozgo-700 text-neutral-900 dark:text-white font-mono font-black text-lg tracking-widest text-center focus:outline-none focus:ring-2 focus:ring-rozgo-900"
-                    />
-                    <Button
-                      type="button"
-                      variant={isOtpVerified ? 'outline' : 'primary'}
-                      size="sm"
-                      onClick={handleVerifyOtp}
-                      disabled={otp.length < 4 || isVerifyingOtp || isOtpVerified}
-                    >
-                      {isVerifyingOtp ? 'Verifying...' : isOtpVerified ? 'OTP Verified ✓' : 'Verify OTP'}
-                    </Button>
-                    {isOtpVerified && (
-                      <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                        <Check className="w-4 h-4" /> Mobile Number Verified
-                      </span>
-                    )}
-                  </div>
+              {/* Password */}
+              <div className="sm:col-span-1">
+                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300 mb-1.5 flex items-center justify-between">
+                  <span>Password <span className="text-rozgo-700 dark:text-rozgo-400 font-black">*</span></span>
+                </label>
+                <div className="relative flex items-center">
+                  <KeyRound className="w-5 h-5 absolute left-3.5 text-neutral-400" />
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full pl-11 pr-4 py-3 rounded-2xl bg-neutral-50 dark:bg-darkbg-surface border border-neutral-200 dark:border-darkbg-border text-neutral-900 dark:text-white font-mono text-base focus:outline-none focus:ring-2 focus:ring-rozgo-900"
+                    required
+                  />
                 </div>
-              )}
+              </div>
+
+              {/* Confirm Password */}
+              <div className="sm:col-span-1">
+                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 dark:text-neutral-300 mb-1.5 flex items-center justify-between">
+                  <span>Confirm Password <span className="text-rozgo-700 dark:text-rozgo-400 font-black">*</span></span>
+                </label>
+                <div className="relative flex items-center">
+                  <KeyRound className="w-5 h-5 absolute left-3.5 text-neutral-400" />
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full pl-11 pr-4 py-3 rounded-2xl bg-neutral-50 dark:bg-darkbg-surface border border-neutral-200 dark:border-darkbg-border text-neutral-900 dark:text-white font-mono text-base focus:outline-none focus:ring-2 focus:ring-rozgo-900"
+                    required
+                  />
+                </div>
+              </div>
 
               {/* Date of Birth / Age */}
               <div>
@@ -1225,8 +1155,16 @@ export const WorkerOnboardingPage: React.FC = () => {
               </p>
             </div>
 
-            {/* Profile Status Card: NOT VERIFIED */}
+            {/* Profile Status Card */}
             <div className="p-6 rounded-3xl bg-amber-50/80 dark:bg-amber-950/20 border-2 border-amber-300 dark:border-amber-700/60 max-w-md mx-auto shadow-soft text-center space-y-4">
+              {generatedLabourNo && (
+                <div className="pb-2 border-b border-amber-200/80 dark:border-neutral-800">
+                  <p className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-1.5">
+                    Your Assigned Worker ID
+                  </p>
+                  <LabourBadge labourNumber={generatedLabourNo} size="lg" />
+                </div>
+              )}
               <div className="space-y-1">
                 <p className="text-xs font-medium text-neutral-600 dark:text-neutral-400">
                   Your profile is currently:

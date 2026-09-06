@@ -2,9 +2,6 @@ import uuid
 from fastapi import APIRouter, HTTPException, Depends, Header
 from typing import Optional
 from app.schemas.auth import (
-    SendOtpRequest,
-    SendOtpResponse,
-    VerifyOtpRequest,
     LoginPasswordRequest,
     RegisterRequest,
     AuthResponse,
@@ -17,79 +14,8 @@ from app.utils.security import (
     verify_password,
 )
 from app.utils.worker_id import generate_worker_id
-from app.utils.otp import generate_otp, send_real_sms_otp, verify_stored_otp
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
-
-@router.post("/otp/send", response_model=SendOtpResponse)
-async def send_otp(req: SendOtpRequest):
-    phone = req.phone.strip()
-    if not phone:
-        raise HTTPException(status_code=400, detail="Phone number is required")
-
-    otp = generate_otp(6)
-    dispatch_res = await send_real_sms_otp(phone, otp)
-
-    return SendOtpResponse(
-        success=True,
-        message=dispatch_res.get("message", f"OTP sent to {phone}"),
-        demo_otp=dispatch_res.get("demo_otp")
-    )
-
-@router.post("/otp/verify", response_model=AuthResponse)
-async def verify_otp(req: VerifyOtpRequest):
-    phone = req.phone.strip()
-    otp = req.otp.strip()
-
-    # Validate against active OTP store or Twilio Verify
-    is_valid = await verify_stored_otp(phone, otp)
-    if not is_valid:
-        raise HTTPException(status_code=400, detail="Invalid or expired OTP code")
-
-    supabase = get_supabase_client()
-    role = req.role or "worker"
-    user_id = str(uuid.uuid4())
-    user_record = {"id": user_id, "phone": phone, "role": role}
-
-    profile_data = {
-        "id": f"w-{phone[-4:]}" if role == "worker" else f"emp-{phone[-4:]}",
-        "name": f"User {phone[-4:]}",
-        "phone": phone,
-        "role": role,
-    }
-
-    if supabase:
-        try:
-            # Check if user exists
-            res = supabase.table("users").select("*").eq("phone", phone).execute()
-            if res.data and len(res.data) > 0:
-                user_record = res.data[0]
-                role = user_record.get("role", role)
-                # Fetch profile
-                table = "worker_profiles" if role == "worker" else "employer_profiles"
-                prof_res = supabase.table(table).select("*").eq("phone", phone).execute()
-                if prof_res.data and len(prof_res.data) > 0:
-                    profile_data = prof_res.data[0]
-            else:
-                # Create user
-                new_user = supabase.table("users").insert({
-                    "phone": phone,
-                    "role": role
-                }).execute()
-                if new_user.data:
-                    user_record = new_user.data[0]
-        except Exception as e:
-            print(f"Supabase auth error: {e}")
-
-    token = create_access_token({"sub": phone, "role": role, "user_id": user_record.get("id", user_id)})
-    return AuthResponse(
-        success=True,
-        token=token,
-        role=role,
-        user=user_record,
-        profile=profile_data
-    )
-
 @router.post("/login", response_model=AuthResponse)
 async def login_password(req: LoginPasswordRequest):
     phone = req.phone.strip()
